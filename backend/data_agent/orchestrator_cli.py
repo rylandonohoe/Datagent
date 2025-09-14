@@ -127,6 +127,23 @@ class OrchestratorCLI:
             exec_result = result.get("execution_result", {}) if isinstance(result, dict) else {}
             if exec_result.get("status") == "success":
                 self._append_to_pipeline(original_prompt=args, result=result)
+                # Persist incrementally: save dataset snapshot to output/
+                try:
+                    os.makedirs(self.output_dir, exist_ok=True)
+                    # Determine base name from original data path or generic 'dataset'
+                    base = os.path.splitext(os.path.basename(self.orchestrator.data_path or 'dataset'))[0]
+                    step_idx = len(self.orchestrator.get_transformation_history())
+                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    versioned = os.path.join(self.output_dir, f"{base}_step{step_idx}_{ts}.csv")
+                    latest = os.path.join(self.output_dir, f"{base}_latest.csv")
+                    # Use orchestrator's saver to ensure consistent CSV writing
+                    self.orchestrator.save_current_dataset(versioned)
+                    # Also update a latest snapshot
+                    self.orchestrator.save_current_dataset(latest)
+                    print(f"📝 Saved incremental snapshot: {versioned}")
+                    print(f"📝 Updated latest snapshot: {latest}")
+                except Exception as e:
+                    print(f"⚠️ Warning: failed to save incremental snapshots: {e}")
             return True
         
         elif command == "script":
@@ -355,6 +372,14 @@ class OrchestratorCLI:
                         print(f"   Removed columns: {', '.join(changes['removed_columns'])}")
                 elif changes and "note" in changes:
                     print(f"\n📜 {changes['note']}")
+
+                # Show snapshot paths if available
+                if result.get("latest_snapshot") or result.get("versioned_snapshot"):
+                    print("\n💾 Snapshots:")
+                    if result.get("versioned_snapshot"):
+                        print(f"   Versioned: {result['versioned_snapshot']}")
+                    if result.get("latest_snapshot"):
+                        print(f"   Latest:    {result['latest_snapshot']}")
             else:
                 print(f"\n❌ Execution failed: {exec_result.get('error', 'Unknown error')}")
         else:
