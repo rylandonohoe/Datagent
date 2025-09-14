@@ -121,10 +121,38 @@ class OpenAIProvider(AIProvider):
                 result = response.json()
                 ai_response = result["choices"][0]["message"]["content"]
                 
+                # Debug: Print the raw response
+                print(f"🔍 OpenAI Raw Response: {ai_response[:200]}...")
+                
                 try:
-                    parsed_response = json.loads(ai_response)
+                    # Clean the response before parsing
+                    cleaned_response = ai_response.strip()
+                    # Remove any control characters that break JSON parsing
+                    import re
+                    cleaned_response = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned_response)
+                    # Fix common JSON formatting issues
+                    cleaned_response = cleaned_response.replace('\n', '\\n').replace('\t', '\\t')
+                    
+                    parsed_response = json.loads(cleaned_response)
                     return parsed_response
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    print(f"⚠️ JSON Parse Error: {str(e)}")
+                    print(f"📄 Full Response: {ai_response[:500]}...")
+                    
+                    # Try to extract JSON from markdown code blocks
+                    if '```json' in ai_response:
+                        try:
+                            start_idx = ai_response.find('```json') + 7
+                            end_idx = ai_response.find('```', start_idx)
+                            if end_idx != -1:
+                                json_str = ai_response[start_idx:end_idx].strip()
+                                json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+                                parsed_response = json.loads(json_str)
+                                return parsed_response
+                        except:
+                            pass
+                    
+                    # Fallback: return structured response
                     return {
                         "analysis_type": "general",
                         "target_columns": [],
@@ -132,10 +160,18 @@ class OpenAIProvider(AIProvider):
                         "explanation": ai_response
                     }
             else:
-                return {"error": f"API call failed: {response.status_code} - {response.text}"}
+                error_msg = f"API call failed: {response.status_code} - {response.text}"
+                print(f"❌ OpenAI API Error: {error_msg}")
+                return {"error": error_msg}
                 
         except requests.exceptions.RequestException as e:
-            return {"error": f"Network error: {str(e)}"}
+            error_msg = f"Network error: {str(e)}"
+            print(f"🌐 Network Error: {error_msg}")
+            return {"error": error_msg}
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            print(f"💥 Unexpected Error: {error_msg}")
+            return {"error": error_msg}
 
 
 class TandemProvider(AIProvider):
