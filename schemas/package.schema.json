@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Minimal local package.json schema (offline)",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "private": { "type": "boolean" },
+    "version": { "type": "string" },
+    "type": { "enum": ["module", "commonjs"] },
+    "description": { "type": "string" },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "devDependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "peerDependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "boolean", "number"] }
+    }
+  },
+  "additionalProperties": true
+}
+
