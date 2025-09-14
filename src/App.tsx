@@ -635,17 +635,25 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
     setProjects(curr=> curr.map(p=> p.id===project.id ? ({...p, nodes, edges}) : p));
   }, [nodes, edges]);
 
-  // Keyboard event handler for 'e' key to open modal
+  // Keyboard event handler to open modal (E, Space, Enter)
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'e' || e.key === 'E') {
-        if (selectedNodeId) {
-          const selectedNode = nodes.find(n => n.id === selectedNodeId);
-          if (selectedNode) {
-            openModalFor(selectedNode as Node<NodeData>);
-          }
-        }
+      // ignore if typing in an input/textarea/contenteditable
+      const ae = document.activeElement as HTMLElement | null;
+      const tag = ae?.tagName?.toLowerCase();
+      const isTyping = !!ae && (ae.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select');
+      if (isTyping) return;
+
+      const isOpenKey = (k: string) => k === 'e' || k === 'E' || k === ' ' || k === 'Enter' || k === 'Spacebar';
+      if (!isOpenKey(e.key)) return;
+
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'Spacebar') {
+        e.preventDefault(); // avoid page scroll / button activation
       }
+
+      if (!selectedNodeId) return;
+      const selectedNode = nodes.find(n => n.id === selectedNodeId);
+      if (selectedNode) openModalFor(selectedNode as Node<NodeData>);
     };
 
     window.addEventListener('keydown', handleKeyPress);
@@ -656,7 +664,20 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
     setEdges((eds) => addEdge({ ...conn, animated: true, markerEnd:{ type: MarkerType.ArrowClosed } }, eds));
   }, []);
 
-  // Remove the old datagent-configure event listener since we're using keyboard now
+  // Listen for node-level double-click events to open modals
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      try {
+        const ce = ev as CustomEvent<{ id: string }>;
+        const id = (ce.detail as any)?.id as string | undefined;
+        if (!id) return;
+        const node = nodes.find(n => n.id === id);
+        if (node) openModalFor(node as Node<NodeData>);
+      } catch {}
+    };
+    (window as any).addEventListener('datagent-configure', handler as any);
+    return () => (window as any).removeEventListener('datagent-configure', handler as any);
+  }, [nodes]);
 
   // drag from palette disabled; click to add
 
@@ -790,11 +811,12 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         onConnect={onConnect}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        onNodeClick={(_, node) => {
-          setSelectedNodeId(selectedNodeId === node.id ? null : node.id);
-        }}
         onNodeDrag={(_, node) => {
           setSelectedNodeId(node.id);
+        }}
+        onSelectionChange={({ nodes }) => {
+          const sel = nodes && nodes.length > 0 ? nodes[0].id : null;
+          setSelectedNodeId(sel);
         }}
         onPaneClick={() => setSelectedNodeId(null)}
         onInit={(inst) => { rfInstRef.current = inst; /* equal-fit happens in measure */ }}
@@ -967,6 +989,7 @@ function CanvasNode(props: NodeProps<NodeData>){
   const inCount = props.data._in ?? 0;
   const outCount = props.data._out ?? 0;
   const isSelected = props.data._selected ?? false;
+  const clickTimerRef = useRef<number | null>(null);
   const cfg = t==='input' ? { leftTargets: 0, rightSources: outCount + 1 }
     : t==='process' ? { leftTargets: inCount + 1, rightSources: outCount + 1 }
     : t==='visualize' ? { leftTargets: 1, rightSources: 1 }
@@ -994,10 +1017,22 @@ function CanvasNode(props: NodeProps<NodeData>){
       return `#${to2(f(r))}${to2(f(g))}${to2(f(b))}`;
     } catch { return hex; }
   };
-  const fill = (props.data._selected ? lightenHex(baseColors[t], 0.3) : baseColors[t]);
+  const fill = (props.data._selected ? lightenHex(baseColors[t], 0.4) : baseColors[t]);
+  const toRgba = (hex: string, a: number) => {
+    try {
+      const h = hex.replace('#','');
+      const r = parseInt(h.slice(0,2), 16);
+      const g = parseInt(h.slice(2,4), 16);
+      const b = parseInt(h.slice(4,6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    } catch { return hex; }
+  };
+  const glowColor = toRgba(baseColors[t], 0.7);
+  const glowColorMid = toRgba(baseColors[t], 0.4);
+  const glowColorOuter = toRgba(baseColors[t], 0.2);
   // Border thickness to indicate selection
-  const edgeStroke = isSelected ? 3 : 1;     // diagonal edges
-  const vertStroke = isSelected ? 4 : 1.5;   // vertical edge slightly thicker for visual parity
+  const edgeStroke = 1;     // uniform diagonal edge width
+  const vertStroke = 1.5;   // keep vertical edge slightly thicker for parity
 
   const makeHandles = (side: 'left'|'right', count: number, type: 'source'|'target') => {
     const arr: React.ReactElement[] = [];
@@ -1022,23 +1057,59 @@ function CanvasNode(props: NodeProps<NodeData>){
       style={{ 
         width: sizeW, 
         height: sizeH,
-        filter: isSelected ? 'drop-shadow(0 0 8px rgba(0,0,0,0.3))' : 'none'
-      }} 
+        filter: 'none'
+      }}
+      onClick={(e)=>{
+        e.stopPropagation();
+        if (clickTimerRef.current) { window.clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+        const detail = (e as any).detail as number;
+        if (detail === 1) {
+          clickTimerRef.current = window.setTimeout(() => {
+            props.data._onSelect?.();
+          }, 200);
+        } else if (detail === 2) {
+          props.data._onSelect?.();
+          (window as any).dispatchEvent(new CustomEvent('datagent-configure', { detail: { id: (props as any).id } }));
+        }
+      }}
     >
       {t==='process' && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW, height: sizeH, background: fill, border: `${isSelected ? 4 : 1}px solid #000` }} />
+        <div
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+          style={{
+            width: sizeW,
+            height: sizeH,
+            background: fill,
+            border: `1px solid #000`,
+            boxShadow: isSelected
+              ? `0 0 12px 4px ${glowColor}, 0 0 28px 10px ${glowColorMid}, 0 0 48px 18px ${glowColorOuter}`
+              : 'none'
+          }}
+        />
       )}
       {t==='visualize' && (
         (() => {
           const side = Math.round(sizeH / Math.sqrt(2));
           return (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: side, height: side, background: fill, transform: 'rotate(45deg)', border: `${isSelected ? 4 : 1}px solid #000` }} />
+            <div
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+              style={{
+                width: side,
+                height: side,
+                background: fill,
+                transform: 'rotate(45deg)',
+                border: `1px solid #000`,
+                boxShadow: isSelected
+                  ? `0 0 12px 4px ${glowColor}, 0 0 28px 10px ${glowColorMid}, 0 0 48px 18px ${glowColorOuter}`
+                  : 'none'
+              }}
+            />
           );
         })()
       )}
       {t==='input' && (
         // Equilateral right-facing triangle with crisp, uniform edges
-        <svg className="absolute inset-0" width={sizeW} height={sizeH} viewBox={`0 0 ${sizeW} ${sizeH}`}>
+        <svg className="absolute inset-0" width={sizeW} height={sizeH} viewBox={`0 0 ${sizeW} ${sizeH}`} style={{ filter: isSelected ? `drop-shadow(0 0 12px ${glowColor}) drop-shadow(0 0 28px ${glowColorMid}) drop-shadow(0 0 48px ${glowColorOuter})` : 'none' }}>
           {/* fill */}
           <polygon points={`0,${sizeH/2} ${sizeW},0 ${sizeW},${sizeH}`} fill={fill} />
           {/* edges */}
@@ -1049,7 +1120,7 @@ function CanvasNode(props: NodeProps<NodeData>){
       )}
       {t==='output' && (
         // Equilateral left-facing triangle with crisp, uniform edges
-        <svg className="absolute inset-0" width={sizeW} height={sizeH} viewBox={`0 0 ${sizeW} ${sizeH}`}>
+        <svg className="absolute inset-0" width={sizeW} height={sizeH} viewBox={`0 0 ${sizeW} ${sizeH}`} style={{ filter: isSelected ? `drop-shadow(0 0 12px ${glowColor}) drop-shadow(0 0 28px ${glowColorMid}) drop-shadow(0 0 48px ${glowColorOuter})` : 'none' }}>
           {/* fill */}
           <polygon points={`0,0 0,${sizeH} ${sizeW},${sizeH/2}`} fill={fill} />
           {/* edges */}
