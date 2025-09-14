@@ -106,7 +106,7 @@ class OpenAIProvider(AIProvider):
                 }
             ],
             "temperature": 0.1,
-            "max_tokens": 1000
+            "max_tokens": 4000
         }
         
         try:
@@ -114,15 +114,19 @@ class OpenAIProvider(AIProvider):
                 f"{self.base_url}/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=30
+                timeout=60  # Increased timeout for longer responses
             )
             
             if response.status_code == 200:
                 result = response.json()
                 ai_response = result["choices"][0]["message"]["content"]
                 
-                # Debug: Print the raw response
-                print(f"🔍 OpenAI Raw Response: {ai_response[:200]}...")
+                # Debug: Print the raw response (show more for debugging)
+                print(f"🔍 OpenAI Raw Response: {ai_response[:300]}...")
+                
+                # Check if response was truncated
+                if len(ai_response) > 3900:  # Close to max_tokens limit
+                    print("⚠️ Warning: Response may be truncated due to token limit")
                 
                 try:
                     # Clean the response before parsing
