@@ -475,12 +475,12 @@ function Modal({ title, children, onClose, wide=false }:{ title:string; children
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className={`absolute left-1/2 top-10 -translate-x-1/2 w-[${wide?"920":"640"}px] max-w-[95vw] bg-white rounded-2xl shadow-xl border` }>
+      <div className={`absolute left-1/2 top-10 -translate-x-1/2 ${wide ? "w-[920px]" : "w-[640px]"} max-w-[95vw] bg-white rounded-2xl shadow-xl border`}>
         <div className="px-5 py-3 border-b flex items-center justify-between">
           <div className="font-semibold">{title}</div>
           <button className="text-zinc-500 hover:text-black" onClick={onClose}>✕</button>
         </div>
-        <div className="p-4 max-h-[70vh] overflow-auto">{children}</div>
+        <div className="p-4 max-h-[85vh] overflow-auto">{children}</div>
       </div>
     </div>
   )
@@ -1034,53 +1034,131 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
 
 function VisualizeNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
-  const [chat, setChat] = useState<ConversationTurn[]>(
-    d.convo ?? ([{ role: "assistant", content: "How would you like to visualize the data? (bar, line, pie, heatmap, text summary, table)" }] as ConversationTurn[])
-  );
-  const [msg, setMsg] = useState("");
-  const [goals, setGoals] = useState<string[]>(d.goals ?? ["Bar chart of weekly revenue by country"]);
+  const [userInput, setUserInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [chartHtml, setChartHtml] = useState("");
+  const [error, setError] = useState("");
+  const [dataPreview, setDataPreview] = useState<any[]>([]);
 
-  const send = () => {
-    if(!msg.trim()) return;
-    const next: ConversationTurn[] = [...chat, { role: "user", content: msg } as const];
-    const g = synthesizeGoals([...goals], msg);
-    next.push({ role: "assistant", content: "Great, updated the visualization spec." } as const);
-    setGoals(g);
-    setChat(next);
-    setMsg("");
+  // Load sample iris data for preview
+  useEffect(() => {
+    const sampleData = [
+      {sepal_length: 5.1, sepal_width: 3.5, petal_length: 1.4, petal_width: 0.2, species: 'setosa'},
+      {sepal_length: 4.9, sepal_width: 3.0, petal_length: 1.4, petal_width: 0.2, species: 'setosa'},
+      {sepal_length: 7.0, sepal_width: 3.2, petal_length: 4.7, petal_width: 1.4, species: 'versicolor'},
+      {sepal_length: 6.4, sepal_width: 3.2, petal_length: 4.5, petal_width: 1.5, species: 'versicolor'},
+      {sepal_length: 6.3, sepal_width: 3.3, petal_length: 6.0, petal_width: 2.5, species: 'virginica'}
+    ];
+    setDataPreview(sampleData);
+  }, []);
+
+  const generateVisualization = async () => {
+    if (!userInput.trim()) return;
+    
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch('http://localhost:8080/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_input: userInput,
+          chart_code: ""
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('Backend response:', data);
+      
+      if (data.error) {
+        setError(data.error);
+      } else {
+        console.log('Setting chart HTML:', data.chart_html ? 'HTML received' : 'No HTML');
+        setChartHtml(data.chart_html);
+      }
+      
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const preview: NodeData["preview"] = d.preview ?? { kind: "chart", payload: { title: "Revenue by Country", data: [{x:"US", y:40},{x:"CA",y:22},{x:"UK",y:18},{x:"DE",y:15}] } };
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      generateVisualization();
+    }
+  };
+
+  const preview: NodeData["preview"] = chartHtml ? 
+    { kind: "chart", payload: { html: chartHtml }, updatedAt: Date.now() } :
+    d.preview ?? { kind: "chart", payload: { title: "Iris Dataset Visualization", data: dataPreview.slice(0, 3) } };
 
   return (
-    <Modal title="Configure Visualization" onClose={onClose}>
-      <div className="space-y-3">
-        <div className="rounded-xl border bg-white">
-          <div className="p-3 border-b text-sm font-medium">Conversation</div>
-          <div className="p-3 h-48 overflow-auto space-y-2">
-            {chat.map((t,i)=> (
-              <div key={i} className={`text-sm ${t.role==="user"?"text-zinc-900":"text-zinc-700"}`}>
-                <span className={`text-xs px-2 py-0.5 rounded ${t.role==="user"?"bg-indigo-50 text-indigo-700":"bg-zinc-100 text-zinc-700"}`}>{t.role}</span>
-                <div className="mt-1">{t.content}</div>
-              </div>
-            ))}
+    <Modal title="Configure Visualization" onClose={onClose} wide={true}>
+      <div className="-m-4 flex flex-col h-[75vh]">
+        {/* Chart Preview */}
+        <div className="flex-1 w-full flex items-center justify-center min-h-0 p-4">
+          {chartHtml ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <iframe 
+                srcDoc={chartHtml}
+                style={{ 
+                  width: '100%', 
+                  height: '100%', 
+                  border: 'none', 
+                  display: 'block',
+                  maxWidth: '900px',
+                  maxHeight: '600px',
+                  marginLeft: '200px'
+                }}
+                title="Generated Chart"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500 border-2 border-dashed border-gray-300 rounded w-full">
+              {isLoading ? "Generating visualization..." : "Enter a visualization request below"}
+            </div>
+          )}
+        </div>
+
+        {/* User Input */}
+        <div className="rounded-xl bg-white p-4 m-4 flex-shrink-0">
+          {error && (
+            <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+              {error}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <input
+              type="text"
+              className="flex-1 border rounded-lg px-3 py-2"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="e.g., 'Create a scatter plot of sepal_length vs sepal_width colored by species'"
+              disabled={isLoading}
+            />
+            <button
+              onClick={generateVisualization}
+              disabled={isLoading || !userInput.trim()}
+              className="px-6 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLoading && (
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+              )}
+              Generate
+            </button>
           </div>
-          <div className="p-3 border-t flex gap-2">
-            <input className="flex-1 border rounded-lg px-2 py-2" value={msg} onChange={(e)=>setMsg(e.target.value)} placeholder="e.g., stacked bar chart by region; annotate anomaly" />
-            <button onClick={send} className="px-3 rounded-lg bg-indigo-600 text-white">Send</button>
-          </div>
         </div>
-        <div className="rounded-xl border bg-white p-3">
-          <div className="text-sm font-medium mb-2">Goals</div>
-          <ul className="list-disc ml-5 text-sm space-y-1">
-            {goals.map((g,i)=> <li key={i}>{g}</li>)}
-          </ul>
-        </div>
-        <div className="rounded-xl border bg-white p-3">
-          <div className="text-sm font-medium mb-2">Preview</div>
-          <PreviewCard preview={preview} />
-        </div>
-        <button className="w-full bg-indigo-600 text-white rounded-xl py-2" onClick={()=>{ onSave({ ...d, convo: chat, goals, status: "configured", preview }); onClose(); }}>Save</button>
       </div>
     </Modal>
   )
