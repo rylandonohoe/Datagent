@@ -1520,21 +1520,30 @@ function ExecBar({ project }:{ project: Project }){
   const compileBlocksForExecution = () => {
     const blocks: any[] = [];
     
+    // Sort nodes by creation order (assuming earlier created nodes have earlier IDs)
+    const sortedNodes = [...project.nodes].sort((a, b) => a.id.localeCompare(b.id));
+    
+    // Create a mapping from node ID to sequential block ID
+    const nodeIdToBlockId = new Map<string, number>();
+    sortedNodes.forEach((node, index) => {
+      nodeIdToBlockId.set(node.id, index + 1);
+    });
+    
     // Process each node and convert to backend API format
-    project.nodes.forEach(node => {
+    sortedNodes.forEach((node, index) => {
       const nodeData = node.data;
       let block: any = {
-        block_id: parseInt(node.id.split('-')[1]) || Math.floor(Math.random() * 1000),
+        block_id: index + 1, // Sequential IDs starting from 1
         block_type: mapNodeTypeToBlockType(nodeData.type)
       };
 
-      // Add prerequisites based on edges
+      // Add prerequisites based on edges - find all nodes that connect TO this node
       const incomingEdges = project.edges.filter(edge => edge.target === node.id);
       if (incomingEdges.length > 0) {
         block.pre_req = incomingEdges.map(edge => {
-          const sourceNode = project.nodes.find(n => n.id === edge.source);
-          return parseInt(sourceNode?.id.split('-')[1] || '0') || Math.floor(Math.random() * 1000);
-        });
+          const sourceBlockId = nodeIdToBlockId.get(edge.source);
+          return sourceBlockId || 0; // Return the sequential block ID of the source node
+        }).filter(id => id > 0); // Remove any invalid IDs
       }
 
       // Add block-specific fields
