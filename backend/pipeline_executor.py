@@ -267,13 +267,25 @@ class PipelineExecutor:
             "timestamp": datetime.now().isoformat()
         })
         
+        # Save a final snapshot and collect paths
+        latest_snapshot = None
+        versioned_snapshot = None
+        try:
+            snap = self.orchestrator.save_snapshot(base=str(dest_id))
+            latest_snapshot = snap.get("latest")
+            versioned_snapshot = snap.get("versioned")
+        except Exception:
+            pass
+
         # Return result for this destination
         return {
             "destination_id": dest_id,
             "email_dest": dest_block.get("email_dest"),
             "status": "success",
             "execution_order": execution_order,
-            "final_preview": self._get_data_preview(current_data) if current_data is not None else None
+            "final_preview": self._get_data_preview(current_data) if current_data is not None else None,
+            "latest_snapshot": latest_snapshot,
+            "versioned_snapshot": versioned_snapshot
         }
     
     def _get_dependency_chain(self, dest_block: Dict, all_blocks: List[Dict]) -> Any:

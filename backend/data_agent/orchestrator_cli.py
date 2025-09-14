@@ -142,6 +142,9 @@ class OrchestratorCLI:
                     self.orchestrator.save_current_dataset(latest)
                     print(f"📝 Saved incremental snapshot: {versioned}")
                     print(f"📝 Updated latest snapshot: {latest}")
+                    # Prefer the path returned by the orchestrator if present
+                    most_recent = result.get("latest_snapshot") or latest
+                    print(f"📄 Most recent dataset file: {most_recent}")
                 except Exception as e:
                     print(f"⚠️ Warning: failed to save incremental snapshots: {e}")
             return True
