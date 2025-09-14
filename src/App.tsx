@@ -90,6 +90,8 @@ type NodeData = {
   co2Grams?: number;
   _in?: number;
   _out?: number;
+  _selected?: boolean;
+  _onSelect?: () => void;
 };
 
 // Icon helpers (emoji for zero-dependency aesthetics)
@@ -623,6 +625,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   const resizeTimerRef = useRef<number | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(project.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(project.edges);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const locked = false;
   const miniMapHeight = 120;
   const [miniMapWidth, setMiniMapWidth] = useState<number>(200);
@@ -632,20 +635,28 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
     setProjects(curr=> curr.map(p=> p.id===project.id ? ({...p, nodes, edges}) : p));
   }, [nodes, edges]);
 
+  // Keyboard event handler for 'e' key to open modal
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'e' || e.key === 'E') {
+        if (selectedNodeId) {
+          const selectedNode = nodes.find(n => n.id === selectedNodeId);
+          if (selectedNode) {
+            openModalFor(selectedNode as Node<NodeData>);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [selectedNodeId, nodes]);
+
   const onConnect = useCallback((conn: Edge | Connection) => {
     setEdges((eds) => addEdge({ ...conn, animated: true, markerEnd:{ type: MarkerType.ArrowClosed } }, eds));
   }, []);
 
-  useEffect(()=>{
-    const handler = (e: Event) => {
-      // @ts-ignore
-      const id = (e as any).detail?.id as string;
-      const node = nodes.find(n=> n.id===id);
-      if(node) openModalFor(node);
-    };
-    window.addEventListener('datagent-configure', handler as EventListener);
-    return () => window.removeEventListener('datagent-configure', handler as EventListener);
-  }, [nodes]);
+  // Remove the old datagent-configure event listener since we're using keyboard now
 
   // drag from palette disabled; click to add
 
@@ -761,7 +772,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
             ...n, 
             type: (n.data.type as any), 
             style: { background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 },
-            data: { ...n.data, _in: inCount, _out: outCount }
+            data: { ...n.data, _in: inCount, _out: outCount, _selected: selectedNodeId === n.id, _onSelect: () => setSelectedNodeId(selectedNodeId === n.id ? null : n.id) }
           };
         })}
         edges={edges}
@@ -770,7 +781,13 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         onConnect={onConnect}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        onNodeDoubleClick={(_, node)=> openModalFor(node as Node<NodeData>)}
+        onNodeClick={(_, node) => {
+          setSelectedNodeId(selectedNodeId === node.id ? null : node.id);
+        }}
+        onNodeDrag={(_, node) => {
+          setSelectedNodeId(node.id);
+        }}
+        onPaneClick={() => setSelectedNodeId(null)}
         onInit={(inst) => { rfInstRef.current = inst; /* equal-fit happens in measure */ }}
         isValidConnection={(c)=> {
           const s = nodes.find(n=> n.id === c.source);
@@ -917,6 +934,7 @@ function CanvasNode(props: NodeProps<NodeData>){
   const t = props.type as BlockType;
   const inCount = props.data._in ?? 0;
   const outCount = props.data._out ?? 0;
+  const isSelected = props.data._selected ?? false;
   const cfg = t==='input' ? { leftTargets: 0, rightSources: outCount + 1 }
     : t==='process' ? { leftTargets: inCount + 1, rightSources: outCount + 1 }
     : t==='visualize' ? { leftTargets: 1, rightSources: 1 }
@@ -925,7 +943,24 @@ function CanvasNode(props: NodeProps<NodeData>){
   const isTriangle = t==='input' || t==='output';
   const sizeH = 100;
   const sizeW = t==='process' ? 100 : (isTriangle ? Math.round(sizeH * Math.sqrt(3) / 2) : 120);
-  const fill = t==='input' ? '#17BDFD' : t==='process' ? '#F14D1D' : t==='visualize' ? '#A259FF' : '#03CF83';
+  
+  // Base colors
+  const baseColors = {
+    input: '#17BDFD',
+    process: '#F14D1D', 
+    visualize: '#A259FF',
+    output: '#03CF83'
+  };
+  
+  // Lighter colors for selection (increase brightness/opacity)
+  const selectedColors = {
+    input: '#87DAFE',
+    process: '#F8A08E',
+    visualize: '#D1ACFF',
+    output: '#81E7C1'
+  };
+  
+  const fill = isSelected ? selectedColors[t] : baseColors[t];
 
   const makeHandles = (side: 'left'|'right', count: number, type: 'source'|'target') => {
     const arr: React.ReactElement[] = [];
@@ -945,7 +980,14 @@ function CanvasNode(props: NodeProps<NodeData>){
   };
 
   return (
-    <div className="relative select-none" style={{ width: sizeW, height: sizeH }} onDoubleClick={(e)=>{ e.stopPropagation(); (window as any).dispatchEvent(new CustomEvent('datagent-configure', { detail: { id: (props as any).id } })); }}>
+    <div 
+      className="relative select-none cursor-pointer" 
+      style={{ 
+        width: sizeW, 
+        height: sizeH,
+        filter: isSelected ? 'drop-shadow(0 0 8px rgba(0,0,0,0.3))' : 'none'
+      }} 
+    >
       {t==='process' && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW, height: sizeH, background: fill, border: '1px solid #000' }} />
       )}
