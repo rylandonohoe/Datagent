@@ -768,6 +768,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         nodes={nodes.map(n=> {
           const inCount = edges.filter(e=> e.target===n.id).length;
           const outCount = edges.filter(e=> e.source===n.id).length;
+
           return { 
             ...n, 
             type: (n.data.type as any), 
