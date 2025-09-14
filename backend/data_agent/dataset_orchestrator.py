@@ -85,6 +85,13 @@ class DatasetOrchestrator:
                     # First attempt - use original prompt
                     orchestration_prompt = self._create_orchestration_prompt(prompt)
                     print(f"🎭 {self.ai_provider.get_provider_name()} is orchestrating transformation...")
+                    # Provide a concise header like in the Q&A flow
+                    try:
+                        shape = f"{self.data.shape[0]:,} rows × {self.data.shape[1]} columns"
+                    except Exception:
+                        shape = "unknown shape"
+                    print(f"📁 Dataset: {shape}")
+                    print(f"❓ Request: {prompt}")
                 else:
                     # Retry attempt - use error recovery prompt
                     print(f"🔄 Attempt {attempt + 1}: AI is analyzing and fixing the error...")
@@ -97,7 +104,12 @@ class DatasetOrchestrator:
                 
                 # Clean and parse the AI response
                 cleaned_response = self._clean_ai_response(ai_response)
-            
+                # Extract explicit reasoning/explanation if present and print it
+                reasoning_text = cleaned_response.get("reasoning") or cleaned_response.get("explanation")
+                if isinstance(reasoning_text, str) and reasoning_text.strip():
+                    print("\n🧠 AI Reasoning:")
+                    print(reasoning_text.strip())
+                
                 # Execute the transformation (or just validate in script-only mode)
                 result = self._execute_transformation(cleaned_response, prompt, attempt)
                 
@@ -127,6 +139,13 @@ class DatasetOrchestrator:
                     
                     if attempt > 0:
                         print(f"✅ Fixed! Transformation completed on attempt {attempt + 1}")
+                    
+                    # Attach reasoning to the result info for downstream consumers (API/CLI)
+                    if isinstance(result, dict):
+                        info = result.get("transformation_info", {})
+                        if isinstance(info, dict) and reasoning_text:
+                            info["reasoning"] = reasoning_text
+                            result["transformation_info"] = info
                     
                     return result
                 
@@ -218,6 +237,7 @@ Respond with a JSON object containing:
 {{
     "transformation_type": "preprocessing|feature_engineering|modeling|time_series|cleaning|analysis",
     "libraries_needed": ["library1", "library2"],
+    "reasoning": "Detailed reasoning about the chosen approach and how it addresses the request",
     "explanation": "What this transformation will do and why",
     "code": "# Complete Python code to execute the transformation\\nimport pandas as pd\\n# ... rest of code",
     "expected_changes": "Description of expected dataset changes",
@@ -269,6 +289,7 @@ Please analyze the error and provide a corrected solution. Respond with a JSON o
     "error_analysis": "Detailed explanation of what went wrong",
     "transformation_type": "preprocessing|feature_engineering|modeling|time_series|cleaning|analysis",
     "libraries_needed": ["library1", "library2"],
+    "reasoning": "Your reasoning for the corrected approach and why it will work",
     "explanation": "What the corrected transformation will do",
     "code": "# Fixed Python code that addresses the error\\nimport pandas as pd\\n# ... rest of corrected code",
     "fixes_applied": ["fix1", "fix2", "fix3"],
@@ -304,6 +325,7 @@ CRITICAL REQUIREMENTS:
         transformation_type = ai_response.get("transformation_type", "unknown")
         libraries_needed = ai_response.get("libraries_needed", [])
         explanation = ai_response.get("explanation", "AI-recommended transformation")
+        reasoning = ai_response.get("reasoning") or explanation
         code = ai_response.get("code", "")
         expected_changes = ai_response.get("expected_changes", "")
         output_columns = ai_response.get("output_columns", [])
@@ -313,6 +335,7 @@ CRITICAL REQUIREMENTS:
             "transformation_info": {
                 "type": transformation_type,
                 "explanation": explanation,
+                "reasoning": reasoning,
                 "expected_changes": expected_changes,
                 "libraries_used": libraries_needed,
                 "provider": self.ai_provider.get_provider_name(),

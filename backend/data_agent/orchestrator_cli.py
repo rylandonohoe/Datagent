@@ -4,6 +4,7 @@ Command-line interface for AI Dataset Orchestrator.
 
 import os
 import sys
+from datetime import datetime
 from typing import Dict, Any
 from dataset_orchestrator import DatasetOrchestrator
 
@@ -14,6 +15,10 @@ class OrchestratorCLI:
     def __init__(self):
         self.orchestrator = DatasetOrchestrator()
         self.running = True
+        # cumulative pipeline file path
+        self.output_dir = os.path.join(os.path.dirname(__file__), "output")
+        self.pipeline_path = os.path.join(self.output_dir, "pipeline.py")
+        os.makedirs(self.output_dir, exist_ok=True)
     
     def start(self):
         """Start the interactive CLI."""
@@ -113,9 +118,14 @@ class OrchestratorCLI:
             if not self.orchestrator.ai_provider or not self.orchestrator.ai_provider.is_configured():
                 print("❌ AI provider not configured. Set appropriate API key.")
                 return True
-            
-            result = self.orchestrator.orchestrate_transformation(args)
+            # Build a contextual prompt that includes previous steps
+            contextual_prompt = self._build_contextual_prompt(args)
+            result = self.orchestrator.orchestrate_transformation(contextual_prompt)
             print(self.format_transformation_output(result))
+            # If success, append code to the cumulative pipeline file
+            exec_result = result.get("execution_result", {}) if isinstance(result, dict) else {}
+            if exec_result.get("status") == "success":
+                self._append_to_pipeline(original_prompt=args, result=result)
             return True
         
         elif command == "script":
@@ -266,6 +276,8 @@ class OrchestratorCLI:
             print(f"🎭 {info.get('provider', 'AI')} Orchestration:")
             print(f"   Type: {info.get('type', 'unknown')}")
             print(f"   💡 {info.get('explanation', 'N/A')}")
+            if info.get('reasoning'):
+                print(f"   🧠 Reasoning: {info.get('reasoning')}")
             print(f"   📚 Libraries: {', '.join(info.get('libraries_used', []))}")
             
             # Show error analysis and fixes if this was a retry
@@ -302,6 +314,98 @@ class OrchestratorCLI:
             print(f"❌ Error: {result['error']}")
         
         return True
+
+    # --- Added helpers for contextual prompting and pipeline accumulation ---
+    def _build_contextual_prompt(self, user_prompt: str) -> str:
+        """Compose a prompt that includes a brief summary of previous steps for context."""
+        history = self.orchestrator.get_transformation_history()
+        if not history:
+            return user_prompt
+        # Include up to last 5 steps of context
+        last = history[-5:]
+        lines = ["Previous steps context:"]
+        base_idx = len(history) - len(last) + 1
+        for i, item in enumerate(last, base_idx):
+            info = item.get("result", {}).get("transformation_info", {})
+            desc = info.get("explanation") or info.get("type") or ""
+            lines.append(f"- Step {i}: {desc}")
+        lines.append("")
+        lines.append(f"Current request: {user_prompt}")
+        return "\n".join(lines)
+
+    def _ensure_pipeline_header(self):
+        """Create pipeline file with header if it does not exist."""
+        if not os.path.exists(self.pipeline_path):
+            with open(self.pipeline_path, "w", encoding="utf-8") as f:
+                f.write("# Auto-generated cumulative transformation pipeline\n")
+                f.write("# Each step is appended when you run 'transform' in the CLI.\n\n")
+                f.write("import pandas as pd\n\n")
+                f.write("steps = []\n\n")
+                f.write("def apply_all(df: 'pd.DataFrame') -> 'pd.DataFrame':\n")
+                f.write("    for s in steps:\n")
+                f.write("        df = s(df)\n")
+                f.write("    return df\n\n")
+
+    def _append_to_pipeline(self, original_prompt: str, result: Dict[str, Any]):
+        """Append a new step with generated code to the pipeline file."""
+        self._ensure_pipeline_header()
+        # Determine step number by counting existing step_ functions
+        existing = 0
+        try:
+            with open(self.pipeline_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("def step_"):
+                        existing += 1
+        except FileNotFoundError:
+            existing = 0
+        step_num = existing + 1
+
+        info = result.get("transformation_info", {})
+        reasoning = (info.get("reasoning") or "").strip()
+        code = (result.get("code_generated") or "").rstrip()
+        ts = datetime.now().isoformat()
+
+        # Strip leading code fences if any
+        if code.startswith("```"):
+            code = code.strip("`")
+            lines = code.split("\n")
+            if lines and lines[0].startswith("python"):
+                lines = lines[1:]
+            code = "\n".join(lines)
+
+        # Remove import lines and any data loading lines; rely on incoming df
+        pruned = []
+        for line in code.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("import ") or stripped.startswith("from "):
+                continue
+            if "pd.read_csv(" in stripped or stripped.startswith("df = pd.read_"):
+                continue
+            pruned.append(line)
+        code_body = "\n".join(pruned).rstrip()
+        if not code_body:
+            code_body = "# No executable body returned by provider\n    return df"
+
+        # Ensure the function returns df
+        if "return df" not in code_body:
+            if not code_body.endswith("\n"):
+                code_body += "\n"
+            code_body += "return df"
+
+        with open(self.pipeline_path, "a", encoding="utf-8") as f:
+            f.write(f"# Step {step_num} - {ts}\n")
+            f.write(f"# Prompt: {original_prompt}\n")
+            if reasoning:
+                oneline = reasoning.replace("\n", " ")
+                if len(oneline) > 500:
+                    oneline = oneline[:500] + " ..."
+                f.write(f"# Reasoning: {oneline}\n")
+            f.write(f"def step_{step_num}(df: 'pd.DataFrame') -> 'pd.DataFrame':\n")
+            for ln in code_body.splitlines():
+                f.write("    " + ln + ("\n" if not ln.endswith("\n") else ""))
+            if not code_body.endswith("\n"):
+                f.write("\n")
+            f.write(f"steps.append(step_{step_num})\n\n")
 
 def main():
     """Main entry point for Orchestrator CLI."""
