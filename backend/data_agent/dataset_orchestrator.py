@@ -13,7 +13,8 @@ from datetime import datetime
 import tempfile
 import subprocess
 import sys
-from data_agent.ai_providers import AIProvider, AIProviderFactory
+import traceback
+from .ai_providers import AIProvider, AIProviderFactory
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
@@ -158,12 +159,23 @@ class DatasetOrchestrator:
                         if isinstance(info, dict) and reasoning_text:
                             info["reasoning"] = reasoning_text
                             result["transformation_info"] = info
+
+                    # Persist a snapshot of the most recent dataset and include paths in result
+                    try:
+                        snap = self.save_snapshot()
+                        result["latest_snapshot"] = snap.get("latest")
+                        result["versioned_snapshot"] = snap.get("versioned")
+                    except Exception:
+                        pass
                     
                     return result
                 
                 # If execution failed and we have retries left, prepare error recovery prompt
                 elif attempt < self.max_retry_attempts:
-                    error_msg = result.get("execution_result", {}).get("error", "Unknown error")
+                    exec_res = result.get("execution_result", {}) or {}
+                    error_msg = exec_res.get("error", "Unknown error")
+                    if exec_res.get("traceback"):
+                        error_msg = f"{error_msg}\nTRACEBACK:\n{exec_res['traceback']}"
                     failed_code = result.get("code_generated", "")
                     orchestration_prompt = self._create_error_recovery_prompt(prompt, failed_code, error_msg)
                 else:
@@ -440,9 +452,24 @@ CRITICAL REQUIREMENTS:
                     result["saved_to"] = output_path
                 
             except Exception as e:
-                result["execution_result"] = {"error": f"Code execution failed: {str(e)}"}
+                tb = traceback.format_exc()
+                result["execution_result"] = {
+                    "error": f"Code execution failed: {str(e)}",
+                    "traceback": tb
+                }
         
         return result
+
+    def set_max_retries(self, n: int):
+        """Update the maximum number of retry attempts (>=0)."""
+        try:
+            n = int(n)
+            if n < 0:
+                n = 0
+            self.max_retry_attempts = n
+            print(f"🔁 Max retry attempts set to {self.max_retry_attempts}")
+        except Exception:
+            print("⚠️ Invalid retries value; must be an integer >= 0")
     
     def get_transformation_history(self) -> List[Dict[str, Any]]:
         """Get the history of transformations."""
@@ -459,6 +486,22 @@ CRITICAL REQUIREMENTS:
         
         self.data.to_csv(file_path, index=False)
         return file_path
+
+    def save_snapshot(self, base: Optional[str] = None) -> Dict[str, str]:
+        """Save a versioned and latest snapshot into backend/data_agent/output/ and return their paths."""
+        if self.data is None:
+            raise ValueError("No dataset loaded")
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
+        os.makedirs(output_dir, exist_ok=True)
+        if base is None:
+            base = os.path.splitext(os.path.basename(self.data_path or 'dataset'))[0]
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        versioned = os.path.join(output_dir, f"{base}_step{len(self.transformation_history)}_{ts}.csv")
+        latest = os.path.join(output_dir, f"{base}_latest.csv")
+        # Write files
+        self.data.to_csv(versioned, index=False)
+        self.data.to_csv(latest, index=False)
+        return {"versioned": versioned, "latest": latest}
     
     def generate_transformation_script(self, transformations: List[str]) -> str:
         """Generate a complete script for multiple transformations."""
@@ -690,13 +733,20 @@ The script should be ready to run independently.
                     'email_dest': db.get('email_dest')
                 })
 
+            # Save a final snapshot and return final preview and metadata
+            try:
+                snap = self.save_snapshot(base=str(first_id))
+            except Exception:
+                snap = {}
             # Success: return final preview and metadata
             out = {
                 "status": "success",
                 "applied_blocks": order,
                 "outputs_executed": outputs_executed,
                 "destinations": destinations,
-                "preview": self._preview()
+                "preview": self._preview(),
+                "latest_snapshot": snap.get("latest"),
+                "versioned_snapshot": snap.get("versioned")
             }
             return out
         except Exception as e:
