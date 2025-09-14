@@ -771,6 +771,9 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
           const s = nodes.find(n=> n.id === c.source);
           const t = nodes.find(n=> n.id === c.target);
           if(!s || !t) return false;
+          // prevent multiple edges on the same handle
+          if (c.source && c.sourceHandle && edges.some(e=> e.source===c.source && e.sourceHandle===c.sourceHandle)) return false;
+          if (c.target && c.targetHandle && edges.some(e=> e.target===c.target && e.targetHandle===c.targetHandle)) return false;
           return isConnectionAllowed((s.data as NodeData).type, (t.data as NodeData).type);
         }}
         nodesDraggable={!locked}
@@ -838,23 +841,27 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   );
 }
 
-function ShapeBtn({ type, color, onClick, onDragStart }:{ type: BlockType; color: 'sky'|'violet'|'emerald'|'amber'; onClick:()=>void; onDragStart:(e:React.DragEvent)=>void }){
+function ShapeBtn({ type, color: _color, onClick, onDragStart }:{ type: BlockType; color: 'sky'|'violet'|'emerald'|'amber'; onClick:()=>void; onDragStart:(e:React.DragEvent)=>void }){
   const label = titleFor(type);
-  const fill = color==='sky' ? '#0ea5e9' : color==='violet' ? '#8b5cf6' : color==='emerald' ? '#10b981' : '#f59e0b';
+  const fill = type==='input' ? '#17BDFD' : type==='process' ? '#F14D1D' : type==='visualize' ? '#A259FF' : '#03CF83';
   let shape: React.ReactElement;
-  if(type==='process'){
-    shape = <div className="relative z-10" style={{ width: 64, height: 64, background: fill }} />;
-  } else if(type==='input' || type==='visualize'){
-    shape = <div className="relative z-10" style={{ width: 72, height: 48, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />;
+  if(type==='input'){
+    shape = <div className="relative z-10" style={{ width: 80, height: 64, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)', border: '1px solid #000' }} />;
+  } else if(type==='process'){
+    shape = <div className="relative z-10" style={{ width: 56, height: 56, background: fill, border: '1px solid #000' }} />;
+  } else if(type==='visualize'){
+    shape = <div className="relative z-10" style={{ width: 46, height: 46, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />;
   } else {
-    shape = <div className="relative z-10" style={{ width: 72, height: 48, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)' }} />;
+    shape = <div className="relative z-10" style={{ width: 80, height: 64, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)', border: '1px solid #000' }} />;
   }
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex items-center justify-center">
       <button onClick={onClick} draggable={false} onDragStart={onDragStart} className="relative">
         {shape}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] font-bold text-black whitespace-nowrap">
+          {label}
+        </div>
       </button>
-      <div className="text-[11px] text-black">{label}</div>
     </div>
   );
 }
@@ -899,13 +906,13 @@ function CanvasNode(props: NodeProps<NodeData>){
   const t = props.type as BlockType;
   const inCount = props.data._in ?? 0;
   const outCount = props.data._out ?? 0;
-  const cfg = t==='input' ? { leftTargets: 0, rightSources: Math.max(1, outCount) }
-    : t==='process' ? { leftTargets: Math.max(1, inCount), rightSources: Math.max(1, outCount) }
-    : t==='visualize' ? { leftTargets: 1, rightSources: Math.max(1, outCount) }
-    : { leftTargets: Math.max(1, inCount), rightSources: 0 };
-  const sizeW = t==='process' ? 112 : 112;
-  const sizeH = t==='process' ? 112 : 96;
-  const fill = t==='input' ? '#0ea5e9' : t==='process' ? '#8b5cf6' : t==='visualize' ? '#10b981' : '#f59e0b';
+  const cfg = t==='input' ? { leftTargets: 0, rightSources: outCount + 1 }
+    : t==='process' ? { leftTargets: inCount + 1, rightSources: outCount + 1 }
+    : t==='visualize' ? { leftTargets: 1, rightSources: 1 }
+    : { leftTargets: inCount + 1, rightSources: 0 };
+  const sizeW = t==='process' ? 100 : 120;
+  const sizeH = t==='process' ? 100 : 100;
+  const fill = t==='input' ? '#17BDFD' : t==='process' ? '#F14D1D' : t==='visualize' ? '#A259FF' : '#03CF83';
 
   const makeHandles = (side: 'left'|'right', count: number, type: 'source'|'target') => {
     const arr: React.ReactElement[] = [];
@@ -927,16 +934,16 @@ function CanvasNode(props: NodeProps<NodeData>){
   return (
     <div className="relative select-none" style={{ width: sizeW, height: sizeH }} onDoubleClick={(e)=>{ e.stopPropagation(); (window as any).dispatchEvent(new CustomEvent('datagent-configure', { detail: { id: (props as any).id } })); }}>
       {t==='process' && (
-        <div style={{ width: sizeW, height: sizeW, background: fill }} />
-      )}
-      {t==='input' && (
-        <div style={{ width: sizeW, height: sizeH, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW, height: sizeH, background: fill, border: '1px solid #000' }} />
       )}
       {t==='visualize' && (
-        <div style={{ width: sizeW, height: sizeH, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW*0.8, height: sizeH*0.8, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />
+      )}
+      {t==='input' && (
+        <div className="absolute inset-0" style={{ background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)', border: '1px solid #000' }} />
       )}
       {t==='output' && (
-        <div style={{ width: sizeW, height: sizeH, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)' }} />
+        <div className="absolute inset-0" style={{ background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)', border: '1px solid #000' }} />
       )}
 
       {makeHandles('left', (cfg as any).leftTargets, 'target')}
@@ -947,45 +954,13 @@ function CanvasNode(props: NodeProps<NodeData>){
   );
 }
 
-function PreviewCard({ preview }:{ preview: NonNullable<NodeData["preview"]> }){
-  if(preview.kind==="text") return (
-    <div className="rounded-lg border bg-white p-2 text-xs text-zinc-700">{String(preview.payload)}</div>
-  );
-  if(preview.kind==="chart") return (
-    <div className="rounded-lg border bg-white p-2">
-      <div className="text-xs text-zinc-500 mb-1">{preview.payload.title ?? "Chart"}</div>
-      {/* Mini chart placeholder */}
-      <div className="grid grid-cols-8 gap-1 h-20 items-end">
-        {preview.payload.data?.slice(0,8).map((d:any,i:number)=> (
-          <div key={i} className="bg-indigo-400 rounded" style={{height: Math.max(6, Math.min(64, d.y*2))}} />
-        ))}
-      </div>
-    </div>
-  );
-  // table
-  return (
-    <div className="rounded-lg border bg-white overflow-hidden">
-      <table className="w-full text-xs">
-        <thead className="bg-zinc-50">
-          <tr>{Object.keys(preview.payload[0]??{a:"A"}).slice(0,5).map((k)=> <th key={k} className="px-2 py-1 text-left text-zinc-600">{k}</th>)}</tr>
-        </thead>
-        <tbody>
-          {preview.payload.slice(0,6).map((row:any, i:number)=> (
-            <tr key={i} className="border-t">
-              {Object.values(row).slice(0,5).map((v:any, j:number)=> <td key={j} className="px-2 py-1 text-zinc-700">{String(v)}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+// PreviewCard removed
 
 // --------------------------- Node Modals ---------------------------
-function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function InputNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
   const [kind, setKind] = useState<InputSourceKind>((d.input?.source.kind) || "csv");
-  const [cfg, setCfg] = useState<InputConfig>(d.input?.source || { kind: "csv", delimiter: "," });
+  const [_cfg, setCfg] = useState<InputConfig>(d.input?.source || { kind: "csv", delimiter: "," });
 
   const updateCfg = (patch: Partial<InputConfig>) => setCfg(prev => ({...prev, ...patch} as any));
 
@@ -1091,7 +1066,7 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
   )
 }
 
-function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function ProcessNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
   const [transformation, setTransformation] = useState<string>(d.convo?.[0]?.content || "");
 
@@ -1112,8 +1087,8 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
   )
 }
 
-function VisualizeNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
-  void node; void onSave; // keep params used (not saving in this modal variant)
+function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+  void node; // keep param used
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [chartHtml, setChartHtml] = useState("");
@@ -1230,7 +1205,7 @@ function VisualizeNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; on
   )
 }
 
-function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function OutputNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
   const [kind, setKind] = useState<Destination["kind"]>(d.destination?.kind ?? "email");
   const [config, setConfig] = useState<Record<string,any>>(d.destination?.config ?? {});
@@ -1389,35 +1364,20 @@ function downloadText(filename: string, text: string){
 
 // topo removed
 
-function sampleRows(n:number){
-  const rows = [] as Array<Record<string, any>>;
-  for(let i=0;i<n;i++) rows.push({ id: i+1, customer_id: 1000+i, amount: +(Math.random()*1000).toFixed(2), currency: ["USD","EUR","CAD"][i%3], country: ["US","CA","UK","DE"][i%4] });
-  return rows;
-}
-
-function synthesizeGoals(goals:string[], msg:string){
-  const parts = msg.split(/[.;]|\nand\b|,\s*/i).map(s=> s.trim()).filter(Boolean);
-  for(const p of parts){ if(!goals.some(g=> g.toLowerCase()===p.toLowerCase())) goals.push(p); }
-  return goals.slice(0,12);
-}
+// helpers removed
 function Logo({ size = 28, className = "" }: { size?: number; className?: string }){
   const [err, setErr] = useState(false);
   const [src, setSrc] = useState<string>("/logo.png");
   return (
-    <div
-      className={`inline-grid place-items-center ${className}`}
-      style={{ width: size, height: size }}
-    >
+    <div className={`inline-grid place-items-center ${className}`} style={{ width: size, height: size }}>
       {err ? (
         <div className="bg-indigo-600 w-full h-full" />
       ) : (
         <img
           src={src}
           alt="Datagent"
-          className="block max-w-[90%] max-h-[90%] object-contain"
-          onError={() => {
-            if (src !== "/logo.svg") setSrc("/logo.svg"); else setErr(true);
-          }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          onError={() => { if (src !== '/logo.svg') setSrc('/logo.svg'); else setErr(true); }}
         />
       )}
     </div>
