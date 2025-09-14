@@ -12,6 +12,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from collections import deque
 from data_agent.dataset_orchestrator import DatasetOrchestrator
+import subprocess
+import sys
 
 
 class PipelineExecutor:
@@ -129,6 +131,10 @@ class PipelineExecutor:
                 output_blocks.append(block)
             elif block_type == "destination":
                 destination_blocks.append(block)
+            elif block_type == "visualization":
+                # Visualization blocks are executed within the destination chain,
+                # but we don't need a separate category list for them here.
+                pass
             else:
                 return {"error": f"Unknown block_type: {block_type}"}
         
@@ -197,7 +203,7 @@ class PipelineExecutor:
         # Execute blocks in order
         current_data = None
         executed_steps = []
-        final_cleaned_file = None  # Track the final cleaned file
+        viz_prompt: Optional[str] = None
         
         for block_id in execution_order:
             block = self.block_map[block_id]
@@ -287,6 +293,14 @@ class PipelineExecutor:
                             "failed_block": block_id,
                             "destination": dest_id
                         }
+            elif block_type == "visualization":
+                # Capture the visualization prompt to drive make_graph later
+                viz_prompt_val = block.get("prompt", "").strip()
+                if viz_prompt_val:
+                    viz_prompt = viz_prompt_val
+                    executed_steps.append(f"Visualization prompt captured from block {block_id}")
+                else:
+                    executed_steps.append(f"Visualization block {block_id} present with empty prompt")
         
         # Record execution history
         self.execution_history.append({
@@ -298,6 +312,59 @@ class PipelineExecutor:
             "timestamp": datetime.now().isoformat()
         })
         
+        # Optionally invoke make_graph.py to generate and send PNG via email or Slack
+        viz_send_result: Dict[str, Any] = {}
+        try:
+            # Ensure the latest dataset is written to backend/output/1_latest.csv for make_graph.py
+            try:
+                if current_data is not None:
+                    out_dir = os.path.join(os.path.dirname(__file__), "output")
+                    os.makedirs(out_dir, exist_ok=True)
+                    latest_path = os.path.join(out_dir, "1_latest.csv")
+                    current_data.to_csv(latest_path, index=False)
+                    executed_steps.append("Wrote latest dataset for visualization: output/1_latest.csv")
+            except Exception as e:
+                # If we cannot persist, still proceed but note the issue
+                executed_steps.append(f"Warning: failed to write output/1_latest.csv: {e}")
+
+            # Determine destination mode and value
+            dest_mode = None
+            dest_value = None
+            if dest_block.get("email_dest"):
+                dest_mode = "email"
+                dest_value = dest_block.get("email_dest")
+            elif dest_block.get("slack_channel") or dest_block.get("slack"):
+                dest_mode = "slack"
+                dest_value = dest_block.get("slack_channel") or dest_block.get("slack")
+            
+            if dest_mode and dest_value:
+                # Fallback prompt if none captured
+                if not viz_prompt:
+                    viz_prompt = "Generate a meaningful financial insight chart highlighting trends and anomalies."
+                
+                make_graph_path = os.path.join(os.path.dirname(__file__), "make_graph.py")
+                cmd = [
+                    sys.executable if 'python' in sys.executable else 'python3',
+                    make_graph_path,
+                    viz_prompt,
+                    dest_mode,
+                    str(dest_value)
+                ]
+                # Run and capture output
+                proc = subprocess.run(cmd, cwd=os.path.dirname(__file__), capture_output=True, text=True, timeout=180)
+                viz_send_result = {
+                    "command": " ".join(cmd),
+                    "returncode": proc.returncode,
+                    "stdout": proc.stdout[-1000:],
+                    "stderr": proc.stderr[-1000:],
+                    "status": "sent" if proc.returncode == 0 else "failed",
+                    "image_path": os.path.abspath(os.path.join(os.path.dirname(__file__), "output", "1_latest_insight.png"))
+                }
+            else:
+                viz_send_result = {"status": "skipped", "reason": "No destination provided in destination block"}
+        except Exception as e:
+            viz_send_result = {"status": "failed", "error": str(e)}
+
         # Return result for this destination
         return {
             "destination_id": dest_id,
@@ -305,7 +372,8 @@ class PipelineExecutor:
             "status": "success",
             "execution_order": execution_order,
             "final_preview": self._get_data_preview(current_data) if current_data is not None else None,
-            "final_cleaned_file": final_cleaned_file
+            "final_cleaned_file": final_cleaned_file,
+            "visualization_send": viz_send_result
         }
     
     def _get_dependency_chain(self, dest_block: Dict, all_blocks: List[Dict]) -> Any:
@@ -438,10 +506,17 @@ if __name__ == "__main__":
                 "init_script": "df['processed_date'] = pd.Timestamp.now()"
             },
             {
-                "block_type": "destination",
+                "block_type": "visualize",
                 "block_id": 4,
                 "pre_req": [3],
-                "email_dest": "user@example.com"
+                "prompt": ""
+            },
+            {
+                "block_type": "output",
+                "block_id": 5,
+                "pre_req": [4],
+                "output_source": "email",
+                "output_data": "rianadutta13@gmail.com"
             }
         ]
     }
