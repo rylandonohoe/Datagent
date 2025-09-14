@@ -20,7 +20,7 @@ class PipelineExecutor:
     Handles topological ordering and execution of block-based workflows.
     """
     
-    def __init__(self, provider_name: str = "tandem"):
+    def __init__(self, provider_name: str = "openai"):
         self.orchestrator = DatasetOrchestrator(provider_name=provider_name)
         self.pipeline_sources = {}
         self.execution_history = []
@@ -369,13 +369,13 @@ class PipelineExecutor:
 
 
 # Convenience function for direct usage
-def execute_pipeline(blocks_json: Any, provider_name: str = "tandem") -> Dict[str, Any]:
+def execute_pipeline(blocks_json: Any, provider_name: str = "openai") -> Dict[str, Any]:
     """
     Execute a data processing pipeline.
     
     Args:
         blocks_json: Pipeline blocks configuration
-        provider_name: AI provider to use ("tandem", "openai", "claude")
+        provider_name: AI provider to use ("openai", "tandem", "claude")
     
     Returns:
         Execution results with status and data previews
