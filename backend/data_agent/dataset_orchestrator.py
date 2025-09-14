@@ -165,6 +165,8 @@ class DatasetOrchestrator:
                         snap = self.save_snapshot()
                         result["latest_snapshot"] = snap.get("latest")
                         result["versioned_snapshot"] = snap.get("versioned")
+                        result["latest_filename"] = os.path.basename(snap.get("latest", ""))
+                        result["versioned_filename"] = os.path.basename(snap.get("versioned", ""))
                     except Exception:
                         pass
                     
@@ -448,8 +450,11 @@ CRITICAL REQUIREMENTS:
                 if save_result:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     output_path = f"data/transformed_{timestamp}.csv"
+                    # Ensure directory exists
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     self.data.to_csv(output_path, index=False)
-                    result["saved_to"] = output_path
+                    result["saved_to"] = os.path.abspath(output_path)
+                    result["saved_filename"] = os.path.basename(output_path)
                 
             except Exception as e:
                 tb = traceback.format_exc()
@@ -746,7 +751,9 @@ The script should be ready to run independently.
                 "destinations": destinations,
                 "preview": self._preview(),
                 "latest_snapshot": snap.get("latest"),
-                "versioned_snapshot": snap.get("versioned")
+                "versioned_snapshot": snap.get("versioned"),
+                "latest_filename": os.path.basename(snap.get("latest", "")),
+                "versioned_filename": os.path.basename(snap.get("versioned", ""))
             }
             return out
         except Exception as e:

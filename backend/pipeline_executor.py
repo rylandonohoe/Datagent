@@ -197,6 +197,7 @@ class PipelineExecutor:
         # Execute blocks in order
         current_data = None
         executed_steps = []
+        final_cleaned_file = None  # Track the final cleaned file
         
         for block_id in execution_order:
             block = self.block_map[block_id]
@@ -256,6 +257,36 @@ class PipelineExecutor:
                             "failed_block": block_id,
                             "destination": dest_id
                         }
+                
+                # Save final cleaned dataset with custom naming
+                if current_data is not None:
+                    try:
+                        # Create output directory if it doesn't exist
+                        output_dir = "data"
+                        os.makedirs(output_dir, exist_ok=True)
+                        
+                        # Generate custom filename
+                        final_filename = f"clean_{block_id}.csv"
+                        final_path = os.path.join(output_dir, final_filename)
+                        
+                        # Save the cleaned dataset
+                        current_data.to_csv(final_path, index=False)
+                        
+                        # Store the final file info for return
+                        final_cleaned_file = {
+                            "path": os.path.abspath(final_path),
+                            "filename": final_filename,
+                            "block_id": block_id
+                        }
+                        
+                        executed_steps.append(f"Saved final dataset: {final_filename}")
+                        
+                    except Exception as e:
+                        return {
+                            "error": f"Failed to save final dataset for output block {block_id}: {str(e)}",
+                            "failed_block": block_id,
+                            "destination": dest_id
+                        }
         
         # Record execution history
         self.execution_history.append({
@@ -273,7 +304,8 @@ class PipelineExecutor:
             "email_dest": dest_block.get("email_dest"),
             "status": "success",
             "execution_order": execution_order,
-            "final_preview": self._get_data_preview(current_data) if current_data is not None else None
+            "final_preview": self._get_data_preview(current_data) if current_data is not None else None,
+            "final_cleaned_file": final_cleaned_file
         }
     
     def _get_dependency_chain(self, dest_block: Dict, all_blocks: List[Dict]) -> Any:
