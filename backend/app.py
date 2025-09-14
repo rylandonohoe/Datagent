@@ -7,6 +7,7 @@ import pandas as pd
 import altair as alt
 import openai
 from data_agent.dataset_orchestrator import DatasetOrchestrator
+from pipeline_executor import execute_pipeline
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -433,6 +434,26 @@ def execute_blocks():
     except Exception as e:
         logging.error(f"Error processing blocks request: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@app.route('/execute_pipeline', methods=['POST'])
+def execute_pipeline_endpoint():
+    """Execute a data processing pipeline using the pipeline executor."""
+    try:
+        data = request.get_json()
+        
+        # The data should be the blocks array from the frontend
+        if not data:
+            return jsonify({'error': 'No pipeline data provided'}), 400
+        
+        # Execute the pipeline using the pipeline_executor
+        result = execute_pipeline(data)
+        
+        # Return the result
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error executing pipeline: {str(e)}")
+        return jsonify({'error': f'Pipeline execution failed: {str(e)}'}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():

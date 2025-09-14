@@ -33,8 +33,8 @@ class PipelineExecutor:
             blocks_json: List of blocks or {"blocks": [...]} containing:
                 - input_source: {"block_type":"input_source","block_id":1,"csv_source":"path"}
                 - process: {"block_type":"process","block_id":2,"pre_req":[1],"prompt":"..."}
-                - output: {"block_type":"output","block_id":3,"pre_req":[2],"init_script":"..."}
-                - destination: {"block_type":"destination","block_id":4,"pre_req":[3],"email_dest":"..."}
+                - output: {"block_type":"output","block_id":3,"pre_req":[2],"output_source":"email|slack","output_data":"email@addr|#channel"}
+                - destination: {"block_type":"destination","block_id":4,"pre_req":[3],"email_type":"email|slack","output_data":"..."}
         
         Returns:
             Dict with status, results, and preview of final dataset
@@ -235,28 +235,20 @@ class PipelineExecutor:
                 executed_steps.append(f"Block {block_id}: {prompt}")
                 
             elif block_type == "output":
-                # Execute custom Python script
-                init_script = block.get("init_script", "").strip()
-                if init_script:
-                    try:
-                        exec_globals = {
-                            'pd': pd,
-                            'np': np,
-                            'df': current_data.copy(),
-                            'sources': self.pipeline_sources,
-                            '__builtins__': __builtins__
-                        }
-                        exec(init_script, exec_globals)
-                        current_data = exec_globals.get('df', current_data)
-                        self.orchestrator.data = current_data
-                        executed_steps.append(f"Executed output script {block_id}")
-                        
-                    except Exception as e:
-                        return {
-                            "error": f"Output block {block_id} failed: {str(e)}",
-                            "failed_block": block_id,
-                            "destination": dest_id
-                        }
+                # Handle output destination
+                output_source = block.get("output_source", "").strip()
+                output_data = block.get("output_data", "").strip()
+                
+                if output_source and output_data:
+                    # Process the output destination
+                    if output_source == "email":
+                        executed_steps.append(f"Prepared data for email delivery to {output_data}")
+                    elif output_source == "slack":
+                        executed_steps.append(f"Prepared data for Slack delivery to {output_data}")
+                    else:
+                        executed_steps.append(f"Prepared data for {output_source} delivery to {output_data}")
+                else:
+                    executed_steps.append(f"Output block {block_id} processed (no destination specified)")
                 
                 # Save final cleaned dataset with custom naming
                 if current_data is not None:
@@ -291,7 +283,9 @@ class PipelineExecutor:
         # Record execution history
         self.execution_history.append({
             "destination_id": dest_id,
-            "email_dest": dest_block.get("email_dest"),
+            "email_type": dest_block.get("email_type"),
+            "output_data": dest_block.get("output_data"),
+            "email_dest": dest_block.get("email_dest"),  # Keep for backward compatibility
             "execution_order": execution_order,
             "executed_steps": executed_steps,
             "final_shape": current_data.shape if current_data is not None else None,
@@ -301,7 +295,9 @@ class PipelineExecutor:
         # Return result for this destination
         return {
             "destination_id": dest_id,
-            "email_dest": dest_block.get("email_dest"),
+            "email_type": dest_block.get("email_type"),
+            "output_data": dest_block.get("output_data"),
+            "email_dest": dest_block.get("email_dest"),  # Keep for backward compatibility
             "status": "success",
             "execution_order": execution_order,
             "final_preview": self._get_data_preview(current_data) if current_data is not None else None,
@@ -435,13 +431,15 @@ if __name__ == "__main__":
                 "block_type": "output",
                 "block_id": 3,
                 "pre_req": [2],
-                "init_script": "df['processed_date'] = pd.Timestamp.now()"
+                "output_source": "email",
+                "output_data": "user@example.com"
             },
             {
                 "block_type": "destination",
                 "block_id": 4,
                 "pre_req": [3],
-                "email_dest": "user@example.com"
+                "email_type": "email",
+                "output_data": "user@example.com"
             }
         ]
     }
