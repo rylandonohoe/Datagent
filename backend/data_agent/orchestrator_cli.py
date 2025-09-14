@@ -5,7 +5,7 @@ Command-line interface for AI Dataset Orchestrator.
 import os
 import sys
 from typing import Dict, Any
-from .dataset_orchestrator import DatasetOrchestrator
+from dataset_orchestrator import DatasetOrchestrator
 
 
 class OrchestratorCLI:

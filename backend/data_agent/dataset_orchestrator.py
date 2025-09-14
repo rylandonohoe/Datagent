@@ -11,7 +11,7 @@ from datetime import datetime
 import tempfile
 import subprocess
 import sys
-from .ai_providers import AIProvider, AIProviderFactory
+from ai_providers import AIProvider, AIProviderFactory
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
