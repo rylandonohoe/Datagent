@@ -4,9 +4,10 @@ Command-line interface for AI Dataset Orchestrator.
 
 import os
 import sys
+import json
 from datetime import datetime
 from typing import Dict, Any
-from dataset_orchestrator import DatasetOrchestrator
+from .dataset_orchestrator import DatasetOrchestrator
 
 
 class OrchestratorCLI:
@@ -161,6 +162,52 @@ class OrchestratorCLI:
         
         elif command == "status":
             self.show_status()
+            return True
+        
+        elif command == "execute":
+            # Execute a final pipeline from a JSON file describing blocks
+            if not args:
+                print("❌ Usage: execute <path_to_blocks.json>")
+                return True
+            path = args.strip().strip('"\'')
+            if not os.path.exists(path):
+                print(f"❌ JSON file not found: {path}")
+                return True
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    blocks = json.load(f)
+            except Exception as e:
+                print(f"❌ Failed to read JSON: {e}")
+                return True
+
+            # Ensure provider is configured before execution
+            if not self.orchestrator.ai_provider or not self.orchestrator.ai_provider.is_configured():
+                print("❌ AI provider not configured. Use: provider <tandem|openai|claude>")
+                return True
+
+            print("🚀 Executing pipeline graph...")
+            result = self.orchestrator.execute_final_pipeline(blocks)
+            if 'error' in result:
+                print("❌ Pipeline failed:")
+                print(f"   Error: {result['error']}")
+                if result.get('failed_block') is not None:
+                    print(f"   Failed block: {result['failed_block']}")
+                if result.get('partial_preview'):
+                    pv = result['partial_preview']
+                    print("   Partial preview:")
+                    print(f"     Shape: {pv.get('shape')}")
+                    print(f"     Columns: {pv.get('columns', [])[:10]}")
+                return True
+
+            print("✅ Pipeline success!")
+            pv = result.get('preview', {})
+            print(f"   Applied blocks: {result.get('applied_blocks', [])}")
+            print(f"   Final shape: {pv.get('shape')}")
+            print(f"   Columns: {pv.get('columns', [])[:10]}{'...' if pv.get('columns') and len(pv['columns'])>10 else ''}")
+            if pv.get('head'):
+                print("   Head (5 rows):")
+                for row in pv['head']:
+                    print(f"     - {row}")
             return True
         
         else:

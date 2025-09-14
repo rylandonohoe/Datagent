@@ -4,6 +4,8 @@ AI orchestrator for dataset transformations using external libraries.
 
 import os
 import json
+import csv
+import warnings
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional, Tuple
@@ -53,7 +55,17 @@ class DatasetOrchestrator:
         """Load a dataset from file."""
         try:
             if file_path.endswith('.csv'):
-                self.data = pd.read_csv(file_path)
+                try:
+                    # Fast path
+                    self.data = pd.read_csv(file_path)
+                except Exception as e:
+                    # Fallback for messy CSVs: python engine, skip bad lines
+                    warnings.warn(f"Standard CSV parse failed ({e}). Falling back to python engine with on_bad_lines='skip'.")
+                    self.data = pd.read_csv(
+                        file_path,
+                        engine='python',
+                        on_bad_lines='skip'
+                    )
             elif file_path.endswith('.json'):
                 self.data = pd.read_json(file_path)
             elif file_path.endswith(('.xlsx', '.xls')):
@@ -375,6 +387,9 @@ CRITICAL REQUIREMENTS:
                     'df': self.data.copy(),
                     '__builtins__': __builtins__
                 }
+                # Expose loaded sources to transformations when executing a pipeline
+                if hasattr(self, 'pipeline_sources') and isinstance(self.pipeline_sources, dict):
+                    exec_globals['sources'] = self.pipeline_sources
                 
                 # Try to import required libraries
                 for lib in libraries_needed:
@@ -494,3 +509,207 @@ The script should be ready to run independently.
     def is_script_only_mode(self) -> bool:
         """Check if script-only mode is enabled."""
         return self.script_only_mode
+
+    # ---------------------- New: Pipeline Execution (Graph JSON) ----------------------
+    def execute_final_pipeline(self, blocks_json: Any) -> Dict[str, Any]:
+        """Execute a graph of blocks to produce a final modified dataset.
+
+        Supports blocks (local files only):
+        - input_source: {"block_type":"input_source","block_id":1,"csv_source":"path/to.csv"}
+        - process: {"block_type":"process","block_id":2,"pre_req":[...],"prompt":"..."}
+        - output: {"block_type":"output","block_id":10,"pre_req":[...],"init_script":"python code"}
+        - destination: {"block_type":"destination","block_id":11,"pre_req":[...],"email_dest":"name@example.com"}
+
+        Returns a dict with status, optional error, and a small preview of the final dataframe.
+        """
+        try:
+            # Normalize input
+            if isinstance(blocks_json, dict) and "blocks" in blocks_json:
+                blocks = blocks_json["blocks"]
+            elif isinstance(blocks_json, list):
+                blocks = blocks_json
+            else:
+                return {"error": "Invalid blocks format. Provide a list of blocks or {'blocks': [...]}"}
+
+            # Index blocks by id and separate types
+            id_map = {}
+            input_blocks = []
+            process_blocks = []
+            output_blocks = []
+            destination_blocks = []
+            for b in blocks:
+                bid = b.get("block_id")
+                if bid is None:
+                    return {"error": "Each block must have a 'block_id'"}
+                id_map[bid] = b
+                btype = b.get("block_type")
+                if btype == "input_source":
+                    input_blocks.append(b)
+                elif btype == "process":
+                    process_blocks.append(b)
+                elif btype == "output":
+                    output_blocks.append(b)
+                elif btype == "destination":
+                    destination_blocks.append(b)
+
+            if not input_blocks:
+                return {"error": "No input_source block provided"}
+            if len(input_blocks) > 1:
+                return {"error": "Multiple input_source blocks not supported yet"}
+
+            # Load all input sources (local CSV/JSON/Excel only) into a sources dict
+            self.pipeline_sources = {}
+            for src in input_blocks:
+                # Support both csv_source and file_path for backward compat
+                file_path = src.get("csv_source") or src.get("file_path")
+                if not file_path:
+                    return {"error": f"input_source {src.get('block_id')} requires 'csv_source' (or 'file_path')"}
+                resolved_path = file_path
+                if not os.path.isabs(resolved_path):
+                    resolved_path = os.path.abspath(os.path.join(os.getcwd(), resolved_path))
+                if not os.path.exists(resolved_path):
+                    return {"error": f"Input file not found: {resolved_path}"}
+                # Load using robust loader
+                tmp_df = None
+                if resolved_path.endswith('.csv'):
+                    try:
+                        tmp_df = pd.read_csv(resolved_path)
+                    except Exception as e:
+                        warnings.warn(f"Standard CSV parse failed ({e}). Falling back to python engine with on_bad_lines='skip'.")
+                        tmp_df = pd.read_csv(resolved_path, engine='python', on_bad_lines='skip')
+                elif resolved_path.endswith('.json'):
+                    tmp_df = pd.read_json(resolved_path)
+                elif resolved_path.endswith(('.xlsx', '.xls')):
+                    tmp_df = pd.read_excel(resolved_path)
+                else:
+                    return {"error": f"Unsupported input format for {resolved_path}"}
+                self.pipeline_sources[src['block_id']] = tmp_df
+
+            # Choose the first input as the working dataframe (df); others are accessible via 'sources'
+            first_id = input_blocks[0]['block_id']
+            self.data = self.pipeline_sources[first_id].copy()
+            self.data_path = str(first_id)
+            print(f"✅ Loaded {len(input_blocks)} input source(s). Working on primary source block {first_id}.")
+
+            # Topological order of process blocks based on pre_req
+            # Build in-degree and adjacency (only count process->process edges)
+            in_deg = {}
+            adj = {}
+            process_ids = {pb["block_id"] for pb in process_blocks}
+            for pb in process_blocks:
+                bid = pb["block_id"]
+                prereqs = pb.get("pre_req", []) or []
+                # Only count dependencies on other process blocks; input_source prereqs are considered satisfied
+                proc_prereqs = [p for p in prereqs if p in process_ids]
+                in_deg[bid] = len(proc_prereqs)
+                for p in proc_prereqs:
+                    adj.setdefault(p, []).append(bid)
+            # Initialize queue with nodes whose (process) prereqs are resolved (0 in-degree)
+            from collections import deque
+            q = deque()
+            for pb in process_blocks:
+                bid = pb["block_id"]
+                if in_deg.get(bid, 0) == 0:
+                    q.append(bid)
+
+            executed = []  # list of (block_id, prompt)
+            order = []
+            while q:
+                b = q.popleft()
+                order.append(b)
+                for nb in adj.get(b, []):
+                    in_deg[nb] -= 1
+                    if in_deg[nb] == 0:
+                        q.append(nb)
+
+            if len(order) != len(process_blocks):
+                return {"error": "Cyclic or unsatisfied dependencies detected in process blocks"}
+
+            # Execute process blocks in topological order
+            for bid in order:
+                block = id_map[bid]
+                prompt = block.get("prompt", "").strip()
+                if not prompt:
+                    return {"error": f"Process block {bid} missing 'prompt'"}
+
+                # Build contextual prompt from executed steps
+                if executed:
+                    context_lines = ["Previous steps context:"]
+                    for idx, (ebid, eprompt) in enumerate(executed, 1):
+                        context_lines.append(f"- Step {idx} (block {ebid}): {eprompt}")
+                    # Include available sources for the model
+                    context_lines.append(f"- Available sources: {list(self.pipeline_sources.keys())}")
+                    context_lines.append("")
+                    context_lines.append(f"Current request: {prompt}")
+                    contextual_prompt = "\n".join(context_lines)
+                else:
+                    contextual_prompt = prompt + f"\n(Available sources: {list(self.pipeline_sources.keys())})"
+
+                result = self.orchestrate_transformation(contextual_prompt)
+                if "error" in result or (result.get("execution_result") and result["execution_result"].get("error")):
+                    return {
+                        "error": result.get("error") or result.get("execution_result", {}).get("error", "Unknown error"),
+                        "failed_block": bid,
+                        "prompt": prompt,
+                        "partial_preview": self._preview()
+                    }
+
+                executed.append((bid, prompt))
+
+            # Execute output blocks (run init_script)
+            outputs_executed = []
+            for ob in output_blocks:
+                prereqs = set(ob.get('pre_req', []) or [])
+                if not prereqs.issubset(set(order)):
+                    # skip if prereqs not satisfied
+                    continue
+                init_script = ob.get('init_script') or ''
+                if init_script.strip():
+                    try:
+                        exec_globals = {
+                            'pd': pd,
+                            'np': np,
+                            'df': self.data.copy(),
+                            'sources': self.pipeline_sources,
+                            '__builtins__': __builtins__
+                        }
+                        exec(init_script, exec_globals)
+                        self.data = exec_globals.get('df', self.data)
+                        outputs_executed.append(ob['block_id'])
+                    except Exception as e:
+                        return {"error": f"Output block {ob['block_id']} failed: {e}", "failed_block": ob['block_id'], "partial_preview": self._preview()}
+
+            # Record destinations (no actual sending here)
+            destinations = []
+            for db in destination_blocks:
+                prereqs = set(db.get('pre_req', []) or [])
+                if not prereqs.issubset(set(order) | set(outputs_executed)):
+                    continue
+                destinations.append({
+                    'block_id': db['block_id'],
+                    'email_dest': db.get('email_dest')
+                })
+
+            # Success: return final preview and metadata
+            out = {
+                "status": "success",
+                "applied_blocks": order,
+                "outputs_executed": outputs_executed,
+                "destinations": destinations,
+                "preview": self._preview()
+            }
+            return out
+        except Exception as e:
+            return {"error": f"Pipeline execution failed: {e}"}
+
+    def _preview(self) -> Dict[str, Any]:
+        try:
+            if self.data is None:
+                return {}
+            return {
+                "shape": [int(self.data.shape[0]), int(self.data.shape[1])],
+                "columns": self.data.columns.tolist(),
+                "head": self.data.head(5).to_dict('records')
+            }
+        except Exception:
+            return {}

@@ -7,7 +7,7 @@ import json
 import requests
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 
 class AIProvider(ABC):
@@ -76,7 +76,7 @@ class OpenAIProvider(AIProvider):
     """OpenAI GPT-4 provider."""
     
     def _load_config(self):
-        load_dotenv()
+        load_dotenv(find_dotenv(), override=True)
         self.api_key = os.getenv('OPENAI_API_KEY')
         self.base_url = "https://api.openai.com/v1"
         self.model = "gpt-4"
@@ -142,7 +142,7 @@ class TandemProvider(AIProvider):
     """Tandem API provider."""
     
     def _load_config(self):
-        load_dotenv()
+        load_dotenv(find_dotenv(), override=True)
         self.api_key = os.getenv('TANDEM_API_KEY')
         self.base_url = "https://api.tandemn.com/api/v1"
         # Use DeepSeek distilled Llama-70B model per user request
@@ -218,7 +218,7 @@ class ClaudeProvider(AIProvider):
     """Anthropic Claude provider."""
     
     def _load_config(self):
-        load_dotenv()
+        load_dotenv(find_dotenv(), override=True)
         self.api_key = os.getenv('ANTHROPIC_API_KEY')
         self.base_url = "https://api.anthropic.com/v1"
         self.model = "claude-opus-4-1-20250805"
