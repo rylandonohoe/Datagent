@@ -56,7 +56,7 @@ type Project = {
   edges: Edge[];
 };
 
-type InputSourceKind = "csv" | "google_sheet" | "s3" | "yahoo_finance";
+type InputSourceKind = "csv" | "google_sheet" | "s3" | "yahoo_finance" | "url";
 
 // minimal, extensible config payloads per source kind
 interface InputConfigBase { kind: InputSourceKind }
@@ -64,8 +64,9 @@ interface CSVConfig extends InputConfigBase { path?: string; delimiter?: string;
 interface SheetConfig extends InputConfigBase { sheet?: string; range?: string; }
 interface S3Config extends InputConfigBase { bucket?: string; prefix?: string; pattern?: string; }
 interface YahooConfig extends InputConfigBase { tickers?: string; interval?: "1d" | "1h" | "1m" }
+interface URLConfig extends InputConfigBase { url?: string; }
 
-type InputConfig = CSVConfig | SheetConfig | S3Config | YahooConfig;
+type InputConfig = CSVConfig | SheetConfig | S3Config | YahooConfig | URLConfig;
 
 type ConversationTurn = { role: "user" | "assistant"; content: string };
 
@@ -969,7 +970,6 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
   const d = node.data;
   const [kind, setKind] = useState<InputSourceKind>((d.input?.source.kind) || "csv");
   const [cfg, setCfg] = useState<InputConfig>(d.input?.source || { kind: "csv", delimiter: "," });
-  const [account, setAccount] = useState<string>(d.input?.boundAccountId || "");
 
   const updateCfg = (patch: Partial<InputConfig>) => setCfg(prev => ({...prev, ...patch} as any));
 
@@ -977,24 +977,52 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
     <Modal title="Configure Input" onClose={onClose}>
       <div className="space-y-3 text-sm">
         <div>
-          <label className="text-xs text-zinc-600">Source Type</label>
-          <select className="mt-1 border rounded-lg px-2 py-2 w-full" value={kind} onChange={(e)=>{ const v = e.target.value as InputSourceKind; setKind(v); setCfg({kind:v} as any); }}>
-            <option value="csv">CSV</option>
-            <option value="google_sheet">Google Sheet</option>
-            <option value="s3">AWS S3</option>
-            <option value="yahoo_finance">Yahoo Finance</option>
-          </select>
+          <label className="text-xs text-zinc-600 block mb-2">Data Source</label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setKind("url"); setCfg({kind:"url"} as any); }}
+              className={`flex items-center justify-center w-16 h-16 rounded-lg border-2 transition-colors ${
+                kind === "url" 
+                  ? "border-violet-500 bg-violet-50 text-violet-600" 
+                  : "border-gray-200 hover:border-gray-300 text-gray-500"
+              }`}
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <button
+              onClick={() => { setKind("csv"); setCfg({kind:"csv", delimiter: ","} as any); }}
+              className={`flex items-center justify-center w-16 h-16 rounded-lg border-2 transition-colors ${
+                kind === "csv" 
+                  ? "border-violet-500 bg-violet-50 text-violet-600" 
+                  : "border-gray-200 hover:border-gray-300 text-gray-500"
+              }`}
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
+        {kind==="url" && (
+          <div>
+            <label className="text-xs">Data URL</label>
+            <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="https://example.com/data.csv" onChange={(e)=> updateCfg({ url: e.target.value } as any)} />
+          </div>
+        )}
         {kind==="csv" && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs">Path</label>
-              <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="/uploads/data.csv" onChange={(e)=> updateCfg({ path: e.target.value } as any)} />
-            </div>
-            <div>
-              <label className="text-xs">Delimiter</label>
-              <input className="mt-1 w-full border rounded-lg px-2 py-2" defaultValue="," onChange={(e)=> updateCfg({ delimiter: e.target.value } as any)} />
-            </div>
+          <div>
+            <label className="text-xs">Upload CSV File</label>
+            <input 
+              type="file" 
+              accept=".csv" 
+              className="mt-1 w-full border rounded-lg px-2 py-2 file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-sm file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100" 
+              onChange={(e)=> {
+                const file = e.target.files?.[0];
+                if (file) updateCfg({ path: file.name } as any);
+              }} 
+            />
           </div>
         )}
         {kind==="google_sheet" && (
@@ -1042,11 +1070,6 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
           </div>
         )}
 
-        <div>
-          <label className="text-xs text-zinc-600">Bound account (optional)</label>
-          <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="Account ID or nickname" value={account} onChange={(e)=> setAccount(e.target.value)} />
-        </div>
-        <button className="w-full bg-indigo-600 text-white rounded-xl py-2" onClick={()=> { onSave({ ...d, input: { source: cfg, boundAccountId: account }, status: "configured", preview: { kind: "table", payload: sampleRows(6) } }); onClose(); }}>Save</button>
       </div>
     </Modal>
   )
@@ -1054,55 +1077,19 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
 
 function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
-  const [chat, setChat] = useState<ConversationTurn[]>(
-    d.convo ?? ([{ role: "assistant", content: "Hi! Tell me how you'd like to transform the data." }] as ConversationTurn[])
-  );
-  const [msg, setMsg] = useState("");
-  const [goals, setGoals] = useState<string[]>(d.goals ?? []);
-
-  const send = () => {
-    if(!msg.trim()) return;
-    const next: ConversationTurn[] = [...chat, { role: "user", content: msg } as const];
-    // mock assistant synthesis
-    const g = synthesizeGoals([...goals], msg);
-    next.push({ role: "assistant", content: "Got it. I'll include that in the transformation plan." } as const);
-    setGoals(g);
-    setChat(next);
-    setMsg("");
-  };
+  const [transformation, setTransformation] = useState<string>(d.convo?.[0]?.content || "");
 
   return (
-    <Modal title="Configure Process" onClose={onClose} wide>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-xl border bg-white">
-          <div className="p-3 border-b text-sm font-medium">Conversation</div>
-          <div className="p-3 h-64 overflow-auto space-y-2">
-            {chat.map((t,i)=> (
-              <div key={i} className={`text-sm ${t.role==="user"?"text-zinc-900":"text-zinc-700"}`}>
-                <span className={`text-xs px-2 py-0.5 rounded ${t.role==="user"?"bg-indigo-50 text-indigo-700":"bg-zinc-100 text-zinc-700"}`}>{t.role}</span>
-                <div className="mt-1">{t.content}</div>
-              </div>
-            ))}
-          </div>
-          <div className="p-3 border-t flex gap-2">
-            <input className="flex-1 border rounded-lg px-2 py-2" value={msg} onChange={(e)=>setMsg(e.target.value)} placeholder="e.g., drop nulls in customer_id; lowercase email; convert currencies to USD" />
-            <button onClick={send} className="px-3 rounded-lg bg-indigo-600 text-white">Send</button>
-          </div>
-        </div>
-        <div className="space-y-3">
-          <div className="rounded-xl border bg-white p-3">
-            <div className="text-sm font-medium mb-2">Goals</div>
-            {goals.length===0 ? <div className="text-xs text-zinc-500">No goals yet. They'll appear here as you chat.</div> : (
-              <ul className="list-disc ml-5 text-sm space-y-1">
-                {goals.map((g,i)=> <li key={i}>{g}</li>)}
-              </ul>
-            )}
-          </div>
-          <div className="rounded-xl border bg-white p-3">
-            <div className="text-sm font-medium mb-2">Preview</div>
-            <PreviewCard preview={d.preview ?? { kind: "table", payload: sampleRows(8) }} />
-          </div>
-          <button className="w-full bg-indigo-600 text-white rounded-xl py-2" onClick={()=>{ onSave({ ...d, convo: chat, goals, status: "configured", preview: { kind: "table", payload: sampleRows(8) } }); onClose(); }}>Save</button>
+    <Modal title="Configure Process" onClose={onClose}>
+      <div className="space-y-4 text-sm">
+        <div>
+          <label className="text-xs text-zinc-600 block mb-2">Data Transformation</label>
+          <textarea 
+            className="w-full border rounded-lg px-3 py-3 h-32 resize-none" 
+            placeholder="Explain how you want your data to be transformed"
+            value={transformation}
+            onChange={(e) => setTransformation(e.target.value)}
+          />
         </div>
       </div>
     </Modal>
@@ -1181,7 +1168,7 @@ function VisualizeNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; on
 
   return (
     <Modal title="Configure Visualization" onClose={onClose} wide={true}>
-      <div className="-m-4 flex flex-col h-[75vh]">
+      <div className="-m-4 flex flex-col h-[70vh]">
         {/* Chart Preview */}
         <div className="flex-1 w-full flex items-center justify-center min-h-0 p-4">
           {chartHtml ? (
@@ -1251,12 +1238,34 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
     <Modal title="Configure Output" onClose={onClose}>
       <div className="space-y-3 text-sm">
         <div>
-          <label className="text-xs text-zinc-600">Destination</label>
-          <select className="mt-1 w-full border rounded-lg px-2 py-2" value={kind} onChange={(e)=> setKind(e.target.value as any)}>
-            <option value="email">Email</option>
-            <option value="slack">Slack</option>
-            <option value="gdrive">Google Drive</option>
-          </select>
+          <label className="text-xs text-zinc-600 block mb-2">Destination</label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setKind("email")}
+              className={`flex items-center justify-center w-16 h-16 rounded-lg border-2 transition-colors ${
+                kind === "email" 
+                  ? "border-violet-500 bg-violet-50 text-violet-600" 
+                  : "border-gray-200 hover:border-gray-300 text-gray-500"
+              }`}
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setKind("slack")}
+              className={`flex items-center justify-center w-16 h-16 rounded-lg border-2 transition-colors ${
+                kind === "slack" 
+                  ? "border-violet-500 bg-violet-50 text-violet-600" 
+                  : "border-gray-200 hover:border-gray-300 text-gray-500"
+              }`}
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {kind==="email" && (
@@ -1286,11 +1295,10 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
 
         <div>
           <label className="text-xs text-zinc-600">Schedule (optional)</label>
-          <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="cron e.g. 0 9 * * 1 (Mon 9am)" value={schedule} onChange={(e)=> setSchedule(e.target.value)} />
+          <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="e.g. Mondays 9am, and also every time an alert is set." value={schedule} onChange={(e)=> setSchedule(e.target.value)} />
           <div className="text-[11px] text-zinc-500 mt-1">Tip: Leave empty to only send on manual runs.</div>
         </div>
 
-        <button className="w-full bg-indigo-600 text-white rounded-xl py-2" onClick={()=> { onSave({ ...d, destination: { kind, config }, schedule: schedule || null, status: "ready", preview: { kind: "text", payload: `Will deliver via ${kind}` } }); onClose(); }}>Save</button>
       </div>
     </Modal>
   )
