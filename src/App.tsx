@@ -1113,7 +1113,12 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
         {kind==="url" && (
           <div>
             <label className="text-xs">Data URL</label>
-            <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="https://example.com/data.csv" onChange={(e)=> updateCfg({ url: e.target.value } as any)} />
+            <input 
+              className="mt-1 w-full border rounded-lg px-2 py-2" 
+              placeholder="https://example.com/data.csv" 
+              value={(cfg as any).url || ""}
+              onChange={(e)=> updateCfg({ url: e.target.value } as any)} 
+            />
           </div>
         )}
         {kind==="csv" && (
@@ -1390,24 +1395,24 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-xs">To</label>
-              <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="ops@company.com" onChange={(e)=> setConfig({...config, to: e.target.value})} />
+              <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="ops@company.com" value={config.to || ""} onChange={(e)=> setConfig({...config, to: e.target.value})} />
             </div>
             <div>
               <label className="text-xs">Subject</label>
-              <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="Weekly KPI" onChange={(e)=> setConfig({...config, subject: e.target.value})} />
+              <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="Weekly KPI" value={config.subject || ""} onChange={(e)=> setConfig({...config, subject: e.target.value})} />
             </div>
           </div>
         )}
         {kind==="slack" && (
           <div>
             <label className="text-xs">Channel</label>
-            <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="#analytics" onChange={(e)=> setConfig({...config, channel: e.target.value})} />
+            <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="#analytics" value={config.channel || ""} onChange={(e)=> setConfig({...config, channel: e.target.value})} />
           </div>
         )}
         {kind==="gdrive" && (
           <div>
             <label className="text-xs">Folder path</label>
-            <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="/Reports/Weekly" onChange={(e)=> setConfig({...config, folder: e.target.value})} />
+            <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="/Reports/Weekly" value={config.folder || ""} onChange={(e)=> setConfig({...config, folder: e.target.value})} />
           </div>
         )}
 
