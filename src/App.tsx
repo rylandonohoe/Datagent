@@ -661,7 +661,12 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   }, [selectedNodeId, nodes]);
 
   const onConnect = useCallback((conn: Edge | Connection) => {
-    setEdges((eds) => addEdge({ ...conn, animated: true, markerEnd:{ type: MarkerType.ArrowClosed } }, eds));
+    setEdges((eds) => addEdge({
+      ...conn,
+      animated: true,
+      style: { stroke: '#000000', strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' },
+    } as any, eds));
   }, []);
 
   // Listen for node-level double-click events to open modals
@@ -805,7 +810,13 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
             data: { ...n.data, _in: inCount, _out: outCount, _selected: selectedNodeId === n.id, _onSelect: () => setSelectedNodeId(selectedNodeId === n.id ? null : n.id) }
           };
         })}
-        edges={edges}
+        edges={edges.map(e => ({
+          ...e,
+          style: { ...(e.style||{}), stroke: '#000000', strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' }
+        }))}
+        defaultEdgeOptions={{ style: { stroke: '#000000', strokeWidth: 1.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } }}
+        connectionLineStyle={{ stroke: '#000000', strokeWidth: 1.5 }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -839,7 +850,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#000000" />
         {/* listen for configure events from nodes */}
         <MiniMap
           pannable
@@ -1298,7 +1309,7 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
             onChange={(e) => setTransformation(e.target.value)}
           />
         </div>
-        <div className="flex justify-end pt-2 mt-2">
+        <div className="flex justify-end pt-0 mt-[-4px]">
           <button className="px-3 py-2 rounded-lg bg-[#5f4fa5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
@@ -1366,7 +1377,7 @@ function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<Node
     <Modal title="Configure Visualization" onClose={onClose} wide={true}>
       <div className="-m-4 flex flex-col h-[70vh]">
         {/* Chart Preview */}
-        <div className="flex-1 w-full flex items-center justify-center min-h-0 p-4">
+        <div className="flex-1 w-full flex items-center justify-center min-h-0 px-4 pt-4 pb-2">
           {chartHtml ? (
             <div className="w-full h-full flex items-center justify-center">
               <iframe 
@@ -1391,7 +1402,7 @@ function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<Node
         </div>
 
         {/* User Input */}
-        <div className="rounded-xl bg-white p-4 m-4 flex-shrink-0">
+        <div className="rounded-xl bg-white p-4 mx-4 mt-2 mb-4 flex-shrink-0">
           {error && (
             <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
               {error}
@@ -1400,11 +1411,11 @@ function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<Node
           <div className="flex gap-3">
             <input
               type="text"
-              className="flex-1 border rounded-lg px-3 py-2"
+              className="flex-1 border rounded-lg px-3 py-0"
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="e.g., 'Create a scatter plot of sepal_length vs sepal_width colored by species'"
+              placeholder="e.g., &quot;Create a scatter plot of sepal_length vs. sepal_width coloured by species&quot;"
               disabled={isLoading}
             />
             <button
