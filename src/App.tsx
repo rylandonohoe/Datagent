@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import ReactFlow, {
   addEdge,
   MarkerType,
@@ -10,8 +10,8 @@ import { Background, BackgroundVariant } from "@reactflow/background";
 import { Controls } from "@reactflow/controls";
 import { MiniMap } from "@reactflow/minimap";
 import "reactflow/dist/style.css";
-import type { Edge, Node, Connection, ReactFlowInstance } from "reactflow";
-import { getNodesBounds, getViewportForBounds } from "reactflow";
+import type { Edge, Node, Connection, ReactFlowInstance, NodeProps } from "reactflow";
+import { Handle, Position, getNodesBounds, getViewportForBounds } from "reactflow";
 
 /**
  * Datagent — One‑page React Frontend (Hackathon MVP)
@@ -87,6 +87,8 @@ type NodeData = {
   // Meta
   tokenCost?: number; // for sustainability UI
   co2Grams?: number;
+  _in?: number;
+  _out?: number;
 };
 
 // Icon helpers (emoji for zero-dependency aesthetics)
@@ -104,8 +106,7 @@ const ICONS = {
   custom: "🔌",
 };
 
-// Token→CO2 rough demo estimate
-const estimateCO2 = (tokens: number) => Math.round(tokens * 0.0002 * 1000) / 1000; // grams
+// Token→CO2 estimate removed with inspector
 
 // --------------------------- Root App ---------------------------
 
@@ -621,8 +622,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   const resizeTimerRef = useRef<number | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(project.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(project.edges);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [locked, setLocked] = useState(false);
+  const locked = false;
   const miniMapHeight = 120;
   const [miniMapWidth, setMiniMapWidth] = useState<number>(200);
 
@@ -634,6 +634,36 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   const onConnect = useCallback((conn: Edge | Connection) => {
     setEdges((eds) => addEdge({ ...conn, animated: true, markerEnd:{ type: MarkerType.ArrowClosed } }, eds));
   }, []);
+
+  useEffect(()=>{
+    const handler = (e: Event) => {
+      // @ts-ignore
+      const id = (e as any).detail?.id as string;
+      const node = nodes.find(n=> n.id===id);
+      if(node) openModalFor(node);
+    };
+    window.addEventListener('datagent-configure', handler as EventListener);
+    return () => window.removeEventListener('datagent-configure', handler as EventListener);
+  }, [nodes]);
+
+  // drag from palette disabled; click to add
+
+  const onDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  };
+
+  const onDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    const type = event.dataTransfer.getData('application/datagent') as BlockType;
+    if (!type) return;
+    const inst = rfInstRef.current;
+    if (!inst) return;
+    const pos = inst.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const id = `${type}-${rid().slice(0,5)}`;
+    const base: NodeData = { type, title: titleFor(type), status: "empty" };
+    setNodes(ns => ns.concat({ id, position: pos, data: base, type } as Node<NodeData>));
+  };
 
   useEffect(() => {
     const root = canvasRef.current;
@@ -680,10 +710,10 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
     const id = `${type}-${rid().slice(0,5)}`;
     const base: NodeData = { type, title: titleFor(type), status: "empty" };
     const position = { x: 160 + Math.random() * 480, y: 120 + Math.random() * 320 };
-    setNodes(ns=> ns.concat({ id, position, data: base, type: "default" }));
+    setNodes(ns=> ns.concat({ id, position, data: base, type: type as any }));
   };
 
-  const selectedNode = useMemo(()=> nodes.find(n=> n.id===selectedNodeId) ?? null, [nodes, selectedNodeId]);
+  // no inspector selection needed
   const setNodeData = (id: string, updater: (d: NodeData)=>NodeData) => setNodes(ns => ns.map(n => n.id===id ? ({...n, data: updater(n.data)}) : n));
 
   const openModalFor = (node: Node<NodeData>) => {
@@ -705,56 +735,35 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   const setShowVisualizeModal = (id:string, v:boolean)=> setVisualizeModalId(v? id : null);
   const setShowOutputModal = (id:string, v:boolean)=> setOutputModalId(v? id : null);
 
-  // Run stub: traverse in topological order and mark statuses + previews
-  const handleRun = async () => {
-    // validate edges vs rules (simple check)
-    for(const e of edges){
-      const s = nodes.find(n=>n.id===e.source)!, t = nodes.find(n=>n.id===e.target)!;
-      if(!isConnectionAllowed(s.data.type, t.data.type)){
-        alert(`Invalid edge: ${s.data.type} → ${t.data.type}`);
-        return;
-      }
-    }
-    // reset statuses
-    setNodes(ns => ns.map(n => ({...n, data: {...n.data, status: "queued"}})));
-    const order = topo(nodes, edges);
-    for(const id of order){
-      setNodeData(id, d=> ({...d, status: "running" }));
-      await sleep(400);
-      // fake token + preview
-      const tokens = dice(50, 140) - (Math.random()<0.5?20:0);
-      const co2 = estimateCO2(tokens);
-      setNodeData(id, d=> ({
-        ...d,
-        status: "done",
-        tokenCost: tokens,
-        co2Grams: co2,
-        preview: d.preview ?? defaultPreviewFor(d.type)
-      }));
-    }
-  };
+  // Inspector run removed
 
   return (
     <div ref={canvasRef} className="h-[calc(100%-56px)] relative">
       {/* Palette */}
-      <div className="absolute z-10 left-4 top-4 bg-white/90 backdrop-blur rounded-2xl border shadow p-2">
-        <div className="text-xs text-zinc-500 px-2 pb-1">Blocks</div>
-        <div className="grid grid-cols-4 gap-1">
-          <BlockBtn label="Input" icon={ICONS.input} onClick={()=>addNode("input")} />
-          <BlockBtn label="Process" icon={ICONS.process} onClick={()=>addNode("process")} />
-          <BlockBtn label="Visualize" icon={ICONS.visualize} onClick={()=>addNode("visualize")} />
-          <BlockBtn label="Output" icon={ICONS.output} onClick={()=>addNode("output")} />
+      <div className="absolute z-10 left-4 top-4 bg-white/90 backdrop-blur rounded-2xl border shadow p-3 overflow-visible">
+        <div className="text-xs text-zinc-500 px-1 pb-2">Blocks</div>
+        <div className="grid grid-cols-4 gap-3">
+          <ShapeBtn type="input" color="sky" onClick={()=>addNode("input")} onDragStart={()=>{}} />
+          <ShapeBtn type="process" color="violet" onClick={()=>addNode("process")} onDragStart={()=>{}} />
+          <ShapeBtn type="visualize" color="emerald" onClick={()=>addNode("visualize")} onDragStart={()=>{}} />
+          <ShapeBtn type="output" color="amber" onClick={()=>addNode("output")} onDragStart={()=>{}} />
         </div>
       </div>
 
       {/* Canvas */}
       <ReactFlow
-        nodes={nodes.map(n=> ({...n, type: "default"}))}
+        nodeTypes={{ input: CanvasNode, process: CanvasNode, visualize: CanvasNode, output: CanvasNode }}
+        nodes={nodes.map(n=> {
+          const inCount = edges.filter(e=> e.target===n.id).length;
+          const outCount = edges.filter(e=> e.source===n.id).length;
+          return { ...n, type: (n.data.type as any), data: { ...n.data, _in: inCount, _out: outCount } };
+        })}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={(_, node)=> setSelectedNodeId(node.id)}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
         onNodeDoubleClick={(_, node)=> openModalFor(node as Node<NodeData>)}
         onInit={(inst) => { rfInstRef.current = inst; /* equal-fit happens in measure */ }}
         isValidConnection={(c)=> {
@@ -774,6 +783,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        {/* listen for configure events from nodes */}
         <MiniMap
           pannable
           zoomable
@@ -808,25 +818,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         />
       </ReactFlow>
 
-      {/* Right inspector */}
-      <div className="absolute right-4 top-4 z-10 w-[320px] rounded-2xl border bg-white/90 backdrop-blur shadow p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Inspector</div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={()=> setLocked(v=>!v)}
-              className={`px-2 py-1 rounded-lg border ${locked?"bg-zinc-100 text-zinc-700":"bg-white"}`}
-              title={locked?"Unlock layout":"Lock layout"}
-            >{locked?"🔒 Locked":"🔓 Lock"}</button>
-            <button onClick={handleRun} className="px-3 py-1.5 rounded-xl bg-[#6250A5] text-white hover:bg-[#544691]">Run</button>
-          </div>
-        </div>
-        {!selectedNode ? (
-          <div className="text-sm text-zinc-500">Select a node to edit.</div>
-        ) : (
-          <NodeInspector node={selectedNode} setNodeData={setNodeData} openModal={()=>openModalFor(selectedNode)} />
-        )}
-      </div>
+      {/* Inspector removed */}
 
       {/* Node modals */}
       {!!inputModalId && (
@@ -845,13 +837,25 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   );
 }
 
-function BlockBtn({ label, icon, onClick }:{ label:string; icon:string; onClick:()=>void }){
+function ShapeBtn({ type, color, onClick, onDragStart }:{ type: BlockType; color: 'sky'|'violet'|'emerald'|'amber'; onClick:()=>void; onDragStart:(e:React.DragEvent)=>void }){
+  const label = titleFor(type);
+  const fill = color==='sky' ? '#0ea5e9' : color==='violet' ? '#8b5cf6' : color==='emerald' ? '#10b981' : '#f59e0b';
+  let shape: React.ReactElement;
+  if(type==='process'){
+    shape = <div className="relative z-10" style={{ width: 64, height: 64, background: fill }} />;
+  } else if(type==='input' || type==='visualize'){
+    shape = <div className="relative z-10" style={{ width: 72, height: 48, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />;
+  } else {
+    shape = <div className="relative z-10" style={{ width: 72, height: 48, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)' }} />;
+  }
   return (
-    <button onClick={onClick} className="px-2 py-2 rounded-xl border bg-white hover:shadow text-sm flex items-center gap-2">
-      <span>{icon}</span>
-      <span>{label}</span>
-    </button>
-  )
+    <div className="flex flex-col items-center gap-1">
+      <button onClick={onClick} draggable={false} onDragStart={onDragStart} className="relative">
+        {shape}
+      </button>
+      <div className="text-[11px] text-black">{label}</div>
+    </div>
+  );
 }
 
 function titleFor(t: BlockType){
@@ -882,52 +886,64 @@ function isConnectionAllowed(a: BlockType, b: BlockType){
   return false;
 }
 
-function defaultPreviewFor(t: BlockType): NodeData["preview"]{
-  if(t==="visualize") return { kind: "chart", payload: { type: "bar", title: "Preview Chart", data: [{x:"A", y: 10},{x:"B", y:22},{x:"C", y:14}] } };
-  if(t==="process") return { kind: "table", payload: sampleRows(8) };
-  if(t==="output") return { kind: "text", payload: "will deliver downstream result" };
-  return { kind: "table", payload: sampleRows(6) };
-}
+// defaultPreviewFor removed with inspector run
 
 // --------------------------- Inspector ---------------------------
-function NodeInspector({ node, setNodeData, openModal }:{ node: Node<NodeData>; setNodeData:(id:string, up:(d:NodeData)=>NodeData)=>void; openModal:()=>void }){
-  const d = node.data;
+// Inspector removed
+
+// --------------------------- Custom Canvas Nodes ---------------------------
+// node props type imported at top
+
+function CanvasNode(props: NodeProps<NodeData>){
+  const t = props.type as BlockType;
+  const inCount = props.data._in ?? 0;
+  const outCount = props.data._out ?? 0;
+  const cfg = t==='input' ? { leftTargets: 0, rightSources: Math.max(1, outCount) }
+    : t==='process' ? { leftTargets: Math.max(1, inCount), rightSources: Math.max(1, outCount) }
+    : t==='visualize' ? { leftTargets: 1, rightSources: Math.max(1, outCount) }
+    : { leftTargets: Math.max(1, inCount), rightSources: 0 };
+  const sizeW = t==='process' ? 112 : 112;
+  const sizeH = t==='process' ? 112 : 96;
+  const fill = t==='input' ? '#0ea5e9' : t==='process' ? '#8b5cf6' : t==='visualize' ? '#10b981' : '#f59e0b';
+
+  const makeHandles = (side: 'left'|'right', count: number, type: 'source'|'target') => {
+    const arr: React.ReactElement[] = [];
+    for(let i=0;i<count;i++){
+      const topPct = ((i+1)/(count+1))*100;
+      arr.push(
+        <Handle
+          key={`${side}-${type}-${i}`}
+          type={type}
+          position={side==='left'?Position.Left:Position.Right}
+          id={`${side}-${type}-${i}`}
+          style={{ top: `${topPct}%`, background: '#000', width: 8, height: 8, borderRadius: 4, border: 'none' }}
+        />
+      );
+    }
+    return arr;
+  };
+
   return (
-    <div className="space-y-3 text-sm">
-      <div className="flex items-center gap-2">
-        <div className="text-xl">{(ICONS as any)[d.type]}</div>
-        <input className="flex-1 border rounded-lg px-2 py-1" value={d.title} onChange={(e)=> setNodeData(node.id, (dd)=> ({...dd, title: e.target.value}))} />
-        <span className={`text-[10px] px-2 py-0.5 rounded-full ${badgeFor(d.status)}`}>{d.status ?? "empty"}</span>
-      </div>
-      <div className="text-xs text-zinc-500">{descFor(d.type)}</div>
-      {d.preview && <PreviewCard preview={d.preview} />}
-      <button onClick={openModal} className="w-full rounded-lg border bg-zinc-50 py-2 hover:bg-zinc-100">Configure…</button>
-      {(d.tokenCost!=null) && (
-        <div className="text-xs text-zinc-500">tokens: <b>{d.tokenCost}</b> • CO₂: <b>{(d.co2Grams??0).toFixed(3)}g</b></div>
+    <div className="relative select-none" style={{ width: sizeW, height: sizeH }} onDoubleClick={(e)=>{ e.stopPropagation(); (window as any).dispatchEvent(new CustomEvent('datagent-configure', { detail: { id: (props as any).id } })); }}>
+      {t==='process' && (
+        <div style={{ width: sizeW, height: sizeW, background: fill }} />
       )}
+      {t==='input' && (
+        <div style={{ width: sizeW, height: sizeH, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
+      )}
+      {t==='visualize' && (
+        <div style={{ width: sizeW, height: sizeH, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
+      )}
+      {t==='output' && (
+        <div style={{ width: sizeW, height: sizeH, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)' }} />
+      )}
+
+      {makeHandles('left', (cfg as any).leftTargets, 'target')}
+      {makeHandles('right', (cfg as any).rightSources, 'source')}
+
+      {/* double-click the node to configure; no inline button */}
     </div>
-  )
-}
-
-function badgeFor(s?: NodeData["status"]){
-  switch(s){
-    case "running": return "bg-amber-100 text-amber-700";
-    case "done": return "bg-emerald-100 text-emerald-700";
-    case "queued": return "bg-zinc-100 text-zinc-600";
-    case "error": return "bg-rose-100 text-rose-700";
-    case "ready": return "bg-sky-100 text-sky-700";
-    case "configured": return "bg-violet-100 text-violet-700";
-    default: return "bg-zinc-100 text-zinc-600";
-  }
-}
-
-function descFor(t: BlockType){
-  switch(t){
-    case "input": return "Define a data source (CSV, sheet, object store, finance API).";
-    case "process": return "Transform data (clean, join, aggregate, derive features).";
-    case "visualize": return "Choose a chart/text/table to represent the data.";
-    case "output": return "Deliver result to Email, Slack, or Drive; optionally schedule.";
-  }
+  );
 }
 
 function PreviewCard({ preview }:{ preview: NonNullable<NodeData["preview"]> }){
@@ -1110,24 +1126,12 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
 }
 
 function VisualizeNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
-  const d = node.data;
+  void node; void onSave; // keep params used (not saving in this modal variant)
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [chartHtml, setChartHtml] = useState("");
   const [error, setError] = useState("");
-  const [dataPreview, setDataPreview] = useState<any[]>([]);
-
-  // Load sample iris data for preview
-  useEffect(() => {
-    const sampleData = [
-      {sepal_length: 5.1, sepal_width: 3.5, petal_length: 1.4, petal_width: 0.2, species: 'setosa'},
-      {sepal_length: 4.9, sepal_width: 3.0, petal_length: 1.4, petal_width: 0.2, species: 'setosa'},
-      {sepal_length: 7.0, sepal_width: 3.2, petal_length: 4.7, petal_width: 1.4, species: 'versicolor'},
-      {sepal_length: 6.4, sepal_width: 3.2, petal_length: 4.5, petal_width: 1.5, species: 'versicolor'},
-      {sepal_length: 6.3, sepal_width: 3.3, petal_length: 6.0, petal_width: 2.5, species: 'virginica'}
-    ];
-    setDataPreview(sampleData);
-  }, []);
+  // no local sample data needed
 
   const generateVisualization = async () => {
     if (!userInput.trim()) return;
@@ -1175,9 +1179,7 @@ function VisualizeNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; on
     }
   };
 
-  const preview: NodeData["preview"] = chartHtml ? 
-    { kind: "chart", payload: { html: chartHtml }, updatedAt: Date.now() } :
-    d.preview ?? { kind: "chart", payload: { title: "Iris Dataset Visualization", data: dataPreview.slice(0, 3) } };
+  // preview handled inline via iframe/chartHtml
 
   return (
     <Modal title="Configure Visualization" onClose={onClose} wide={true}>
@@ -1316,9 +1318,9 @@ function ExecBar({ project }:{ project: Project }){
 
   return (
     <div className="relative">
-      <button onClick={()=>setOpen(o=>!o)} className="relative pl-3 pr-8 py-1.5 rounded-xl border bg-white hover:bg-zinc-200">
+      <button onClick={()=>setOpen(o=>!o)} className="relative pl-3 pr-10 py-1.5 rounded-xl border bg-white hover:bg-zinc-200">
         <span>Execution</span>
-        <span className={`pointer-events-none absolute right-[2px] top-1/2 -translate-y-1/2 text-zinc-500 ${open?'-rotate-90':'rotate-90'}`}>⟨</span>
+        <span className={`pointer-events-none absolute right-[20px] top-1/2 -translate-y-1/2 text-zinc-500 ${open?'-rotate-270':'rotate-270'}`}>⟨</span>
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-[380px] bg-white border rounded-xl shadow-xl p-3 z-20">
@@ -1364,8 +1366,7 @@ function serializeNode(n: Node<NodeData>){
 // --------------------------- Utils ---------------------------
 function rid(){ return Math.random().toString(36).slice(2); }
 function slug(s:string){ return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,""); }
-function sleep(ms:number){ return new Promise(r=> setTimeout(r, ms)); }
-function dice(min:number,max:number){ return Math.floor(min + Math.random()*(max-min+1)); }
+// sleep/dice removed
 function downloadText(filename: string, text: string){
   const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1378,18 +1379,7 @@ function downloadText(filename: string, text: string){
   URL.revokeObjectURL(url);
 }
 
-function topo(nodes: Node[], edges: Edge[]){
-  const incoming = new Map<string, number>();
-  for(const n of nodes) incoming.set(n.id, 0);
-  for(const e of edges) incoming.set(e.target as string, (incoming.get(e.target as string)??0)+1);
-  const q = nodes.filter(n=> (incoming.get(n.id)??0)===0).map(n=> n.id);
-  const adj = new Map<string,string[]>();
-  for(const e of edges){ const arr = adj.get(e.source as string) ?? []; arr.push(e.target as string); adj.set(e.source as string, arr); }
-  const out: string[] = [];
-  while(q.length){ const id = q.shift()!; out.push(id); for(const nb of adj.get(id)??[]){ const v=(incoming.get(nb)??0)-1; incoming.set(nb,v); if(v===0) q.push(nb);} }
-  if(out.length < nodes.length){ const remain = nodes.map(n=>n.id).filter(id=>!out.includes(id)); return out.concat(remain); }
-  return out;
-}
+// topo removed
 
 function sampleRows(n:number){
   const rows = [] as Array<Record<string, any>>;
