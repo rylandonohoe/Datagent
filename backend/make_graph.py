@@ -149,16 +149,17 @@ def send_via_slack(attachment_path: str, channel: str = "#payroll-data-insights"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate a financial insight chart and send it via email or Slack.")
-    parser.add_argument("csv_path", help="Path to the final CSV dataset")
+    parser = argparse.ArgumentParser(description="Generate a financial insight chart from backend/output/1_latest.csv and send it via email or Slack.")
     parser.add_argument("prompt", help="Natural-language description of the insight to visualize")
     parser.add_argument("destination", choices=["email", "slack"], help="Where to send the chart")
     parser.add_argument("dest_value", help="Email address (if destination=email) or Slack channel (e.g., #payroll-data-insights)")
     args = parser.parse_args()
 
-    csv_path = os.path.abspath(args.csv_path)
+    # Always use the canonical latest dataset path
+    csv_path = os.path.join(os.path.dirname(__file__), "output", "1_latest.csv")
+    csv_path = os.path.abspath(csv_path)
     if not os.path.exists(csv_path):
-        raise SystemExit(f"CSV not found: {csv_path}")
+        raise SystemExit(f"CSV not found: {csv_path}. Make sure your pipeline produced 1_latest.csv under backend/output/.")
 
     df = pd.read_csv(csv_path)
 
