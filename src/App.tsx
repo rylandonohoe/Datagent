@@ -201,6 +201,7 @@ function ConfirmModal({ title, message, confirmLabel = 'Delete', onConfirm, onCl
 // --------------------------- Studio (one-page app) ---------------------------
 function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.SetStateAction<User | null>> }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -212,10 +213,26 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
   const [confirm, setConfirm] = useState<null | { type: 'project'|'account'; id: string; name: string }>(null);
   const [showCloseTip, setShowCloseTip] = useState(false);
 
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(520, Math.max(200, startW + (ev.clientX - startX)));
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   return (
-    <div className="h-full grid grid-cols-[280px_1fr]" style={{gridTemplateColumns: sidebarOpen?"280px 1fr":"0px 1fr"}}>
+    <div className="h-full grid" style={{ gridTemplateColumns: sidebarOpen ? `${Math.round(sidebarWidth)}px 1fr` : '0px 1fr' }}>
       {/* Sidebar */}
-      <aside className={`h-full border-r bg-white ${sidebarOpen?"opacity-100":"opacity-0 pointer-events-none"} transition-all flex flex-col`}>
+      <aside className={`relative h-full border-r bg-white ${sidebarOpen?"opacity-100":"opacity-0 pointer-events-none"} transition-all flex flex-col`}>
         <div className="h-14 flex items-center justify-between px-3 border-b relative">
           <div className="flex items-center gap-1">
             <Logo size={60} className="ml-[-3px] mt-[2px]" />
@@ -233,6 +250,14 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
             </div>
           )}
         </div>
+        {/* Resize handle */}
+        {sidebarOpen && (
+          <div
+            className="absolute top-0 -right-1 h-full w-2 cursor-col-resize"
+            onMouseDown={startResize}
+            title="Resize sidebar"
+          />
+        )}
         <div className="p-3 overflow-auto flex-1">
           <Section title="Projects" actionLabel="New" onAction={()=>setShowCreateProject(true)}>
             {projects.length===0 ? (
@@ -251,6 +276,7 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
               </div>
             )}
           </Section>
+          <div className="h-px bg-zinc-200 my-3.5" />
 
           <Section title="Accounts" actionLabel="Add" onAction={()=>setShowAddAccount(true)}>
             {accounts.length===0 ? <EmptyRow text="No accounts yet"/> : (
@@ -477,7 +503,7 @@ function AddAccountModal({ onClose, onAdd, existingKinds }:{ onClose:()=>void; o
               <option value="slack" disabled={!!existingKinds?.includes("slack")}>Slack</option>
               <option value="yahoo" disabled={!!existingKinds?.includes("yahoo")}>Yahoo Finance</option>
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-6 flex items-center text-zinc-500 rotate-90">⟨</div>
+            <div className="pointer-events-none absolute inset-y-0 right-6 flex items-center text-zinc-500 rotate-270">⟨</div>
           </div>
         </div>
         {sel && existingKinds?.includes(sel as Account["kind"]) && (
@@ -1135,7 +1161,10 @@ function ExecBar({ project }:{ project: Project }){
 
   return (
     <div className="relative">
-      <button onClick={()=>setOpen(o=>!o)} className="px-3 py-1.5 rounded-xl border bg-white hover:bg-zinc-50">Execution ▾</button>
+      <button onClick={()=>setOpen(o=>!o)} className="px-3 py-1.5 rounded-xl border bg-white hover:bg-zinc-200 flex items-center gap-1">
+        <span>Execution</span>
+        <span className={`text-zinc-500 ${open?'-rotate-90':'rotate-90'}`}>⟨</span>
+      </button>
       {open && (
         <div className="absolute right-0 mt-2 w-[380px] bg-white border rounded-xl shadow-xl p-3 z-20">
           <div className="text-sm font-medium mb-2">Schedules</div>
