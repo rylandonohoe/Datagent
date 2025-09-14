@@ -1576,6 +1576,16 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
 function ExecBar({ project }:{ project: Project }){
   const [executing, setExecuting] = useState(false);
 
+  const mapNodeTypeToBlockType = (nodeType: string): string => {
+    switch (nodeType) {
+      case 'input': return 'input_source';
+      case 'process': return 'process';
+      case 'visualize': return 'visualize';
+      case 'output': return 'output'; // will be changed to 'destination' if email
+      default: return 'process';
+    }
+  };
+
   const compileBlocksForExecution = () => {
     const blocks: any[] = [];
     
@@ -1629,8 +1639,6 @@ function ExecBar({ project }:{ project: Project }){
           block.prompt = vizUserMessages.length > 0 
             ? vizUserMessages[vizUserMessages.length - 1].content 
             : 'Create a visualization';
-          // Map visualize to process for backend
-          block.block_type = 'process';
           break;
           
         case 'output':
@@ -1678,16 +1686,6 @@ function ExecBar({ project }:{ project: Project }){
       console.error('Error executing workflow:', error);
     } finally {
       setExecuting(false);
-    }
-  };
-
-  const mapNodeTypeToBlockType = (nodeType: string): string => {
-    switch (nodeType) {
-      case 'input': return 'input_source';
-      case 'process': return 'process';
-      case 'visualize': return 'process'; // visualize maps to process
-      case 'output': return 'output'; // will be changed to 'destination' if email
-      default: return 'process';
     }
   };
 
