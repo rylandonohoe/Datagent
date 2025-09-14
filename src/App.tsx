@@ -182,7 +182,7 @@ function Login({ onSuccess }: { onSuccess: (u: User) => void }) {
               {error && <div className="mt-1 text-xs text-rose-600">{error}</div>}
             </div>
           )}
-          <button className="mt-2 w-full bg-[#6250A5] text-white rounded-xl py-2.5 hover:bg-[#544691]">{mode==="login"?"Enter":"Create account"}</button>
+          <button className="mt-2 w-full bg-[#5f4fa5] text-white rounded-xl py-2.5 hover:bg-[#544691]">{mode==="login"?"Enter":"Create account"}</button>
         </form>
       </div>
     </div>
@@ -336,7 +336,7 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
           <div className="flex items-center gap-2">
             {activeProject && <ExecBar project={activeProject} />}
             {!activeProject && (
-              <button onClick={()=>setShowCreateProject(true)} className="px-3 py-1.5 rounded-xl bg-[#6250A5] text-white hover:bg-[#544691]">Create project</button>
+              <button onClick={()=>setShowCreateProject(true)} className="px-3 py-1.5 rounded-xl bg-[#5f4fa5] text-white hover:bg-[#544691]">Create project</button>
             )}
           </div>
         </div>
@@ -435,7 +435,7 @@ function UserFooter({ user, onLogout, onUpdateUser }:{ user: User; onLogout: ()=
         onClick={()=> setOpen(o=>!o)}
       >
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-[#6250A5] text-white grid place-items-center text-xs font-semibold">
+          <div className="h-8 w-8 rounded-full bg-[#5f4fa5] text-white grid place-items-center text-xs font-semibold">
             {initialsOf(user)}
           </div>
           <div className="text-left">
@@ -468,7 +468,7 @@ function EmptyState({ onCreate }:{ onCreate: ()=>void }){
         <div className="text-4xl mb-3">✨</div>
         <div className="text-xl font-semibold mb-1">Build a Datagent</div>
         <div className="text-zinc-600 mb-4">Drag in your data, build your flow, and share the results anywhere.</div>
-        <button onClick={onCreate} className="px-4 py-2 rounded-xl bg-[#6250A5] text-white hover:bg-[#544691]">Create project</button>
+        <button onClick={onCreate} className="px-4 py-2 rounded-xl bg-[#5f4fa5] text-white hover:bg-[#544691]">Create project</button>
       </div>
     </div>
   )
@@ -516,7 +516,7 @@ function AddAccountModal({ onClose, onAdd, existingKinds }:{ onClose:()=>void; o
         <button
           disabled={!sel}
           onClick={()=>{ if(!sel) return; const kind = sel as Account["kind"]; onAdd({ id: rid(), kind, label: displayNameForKind(kind) }); onClose(); }}
-          className={`w-full rounded-xl py-2 mt-3 ${sel?"bg-[#6250A5] text-white":"bg-zinc-200 text-zinc-500"}`}
+          className={`w-full rounded-xl py-2 mt-3 ${sel?"bg-[#5f4fa5] text-white":"bg-zinc-200 text-zinc-500"}`}
         >
           Connect
         </button>
@@ -587,7 +587,7 @@ function ProfileModal({ user, onClose, onSave }:{ user: User; onClose:()=>void; 
         {err && <div className="text-xs text-rose-600">{err}</div>}
         <div className="flex gap-2 mt-4">
           <button className="px-3 py-2 rounded-lg border" onClick={onClose}>Cancel</button>
-          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white" onClick={handleSave}>Save changes</button>
+          <button className="px-3 py-2 rounded-lg bg-[#5f4fa5] text-white" onClick={handleSave}>Save changes</button>
         </div>
       </div>
     </Modal>
@@ -612,7 +612,7 @@ function CreateProjectModal({ onClose, onCreate }:{ onClose:()=>void; onCreate:(
           const p: Project = { id: rid(), name, description: desc, nodes: [], edges: [] };
           onCreate(p);
           onClose();
-        }} className={`w-full rounded-xl py-2 ${name && desc?"bg-[#6250A5] text-white":"bg-zinc-200 text-zinc-500"}`}>Create</button>
+        }} className={`w-full rounded-xl py-2 ${name && desc?"bg-[#5f4fa5] text-white":"bg-zinc-200 text-zinc-500"}`}>Create</button>
       </div>
     </Modal>
   )
@@ -897,7 +897,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
 function ShapeBtn({ type, color: _color, onClick, onDragStart }:{ type: BlockType; color: 'sky'|'violet'|'emerald'|'amber'; onClick:()=>void; onDragStart:(e:React.DragEvent)=>void }){
   // Show lowercase labels as requested
   const label = type;
-  const fill = type==='input' ? '#17BDFD' : type==='process' ? '#F14D1D' : type==='visualize' ? '#A259FF' : '#03CF83';
+  const fill = type==='input' ? '#17BDFD' : type==='process' ? '#F14D1D' : type==='visualize' ? '#5f4fa5' : '#03CF83';
   const H = 64; // unified visual height for all shapes
   const TRI_W = Math.round(H * Math.sqrt(3) / 2);
   const DIAMOND_SIDE = Math.round(H / Math.sqrt(2)); // rotated square fits into H
@@ -1003,7 +1003,7 @@ function CanvasNode(props: NodeProps<NodeData>){
   const baseColors = {
     input: '#17BDFD',
     process: '#F14D1D', 
-    visualize: '#A259FF',
+    visualize: '#5f4fa5',
     output: '#03CF83'
   };
   const lightenHex = (hex: string, amt: number) => {
@@ -1264,7 +1264,7 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
         )}
 
         <div className="flex justify-end pt-4 border-t mt-4">
-          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
+          <button className="px-3 py-2 rounded-lg bg-[#5f4fa5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
     </Modal>
@@ -1298,7 +1298,7 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
           />
         </div>
         <div className="flex justify-end pt-4 mt-4">
-          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
+          <button className="px-3 py-2 rounded-lg bg-[#5f4fa5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
     </Modal>
@@ -1506,7 +1506,7 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
         </div>
 
         <div className="flex justify-end pt-4 border-t mt-4">
-          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
+          <button className="px-3 py-2 rounded-lg bg-[#5f4fa5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
     </Modal>
@@ -1515,23 +1515,7 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
 
 // --------------------------- Exec Bar (top-right) ---------------------------
 function ExecBar({ project }:{ project: Project }){
-  const [open, setOpen] = useState(false);
   const [executing, setExecuting] = useState(false);
-  const [executionResult, setExecutionResult] = useState<any>(null);
-
-  const exportJSON = () => {
-    const payload = {
-      project: {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        blocks: project.nodes.map(n=> serializeNode(n)),
-        edges: project.edges.map(e=> ({ source: e.source, target: e.target }))
-      }
-    };
-    const text = JSON.stringify(payload, null, 2);
-    downloadText(`${slug(project.name)}.datagent.json`, text);
-  };
 
   const compileBlocksForExecution = () => {
     const blocks: any[] = [];
@@ -1600,7 +1584,6 @@ function ExecBar({ project }:{ project: Project }){
 
   const executeWorkflow = async () => {
     setExecuting(true);
-    setExecutionResult(null);
     
     try {
       const blocks = compileBlocksForExecution();
@@ -1617,7 +1600,6 @@ function ExecBar({ project }:{ project: Project }){
       });
 
       const result = await response.json();
-      setExecutionResult(result);
       
       if (result.success) {
         console.log('Workflow executed successfully:', result);
@@ -1626,10 +1608,6 @@ function ExecBar({ project }:{ project: Project }){
       }
     } catch (error) {
       console.error('Error executing workflow:', error);
-      setExecutionResult({ 
-        success: false, 
-        error: `Network error: ${error instanceof Error ? error.message : 'Unknown error'}` 
-      });
     } finally {
       setExecuting(false);
     }
@@ -1646,109 +1624,22 @@ function ExecBar({ project }:{ project: Project }){
   };
 
   return (
-    <div className="relative">
-      <div className="flex items-center gap-2">
-        <button 
-          onClick={executeWorkflow}
-          disabled={executing || project.nodes.length === 0}
-          className={`px-4 py-1.5 rounded-xl text-white font-medium ${
-            executing || project.nodes.length === 0
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-green-600 hover:bg-green-700'
-          }`}
-        >
-          {executing ? 'Executing...' : 'Execute'}
-        </button>
-        <button onClick={()=>setOpen(o=>!o)} className="relative pl-3 pr-10 py-1.5 rounded-xl border bg-white hover:bg-zinc-200">
-          <span>Options</span>
-          <span className={`pointer-events-none absolute right-[20px] top-1/2 -translate-y-1/2 text-zinc-500 ${open?'-rotate-270':'rotate-270'}`}>⟨</span>
-        </button>
-      </div>
-      {open && (
-        <div className="absolute right-0 mt-2 w-[420px] bg-white border rounded-xl shadow-xl p-3 z-20">
-          {/* Execution Results */}
-          {executionResult && (
-            <div className="mb-4">
-              <div className="text-sm font-medium mb-2">Last Execution Result</div>
-              <div className={`p-3 rounded-lg border ${executionResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <div className={`text-sm font-medium ${executionResult.success ? 'text-green-800' : 'text-red-800'}`}>
-                  {executionResult.success ? '✅ Success' : '❌ Failed'}
-                </div>
-                <div className="text-xs mt-1 text-gray-600">
-                  {executionResult.message || executionResult.error}
-                </div>
-                {executionResult.success && (
-                  <div className="text-xs mt-1 text-gray-500">
-                    Processed {executionResult.processed_blocks || 0} blocks
-                  </div>
-                )}
-                {executionResult.errors && executionResult.errors.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-xs font-medium text-red-700">Errors:</div>
-                    {executionResult.errors.map((error: string, idx: number) => (
-                      <div key={idx} className="text-xs text-red-600 mt-1">• {error}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="h-px bg-zinc-200 my-3" />
-            </div>
-          )}
-          
-          <div className="text-sm font-medium mb-2">Schedules</div>
-          <div className="max-h-60 overflow-auto space-y-2">
-            {project.nodes.filter(n=> n.data.type==="output").map(n=> (
-              <div key={n.id} className="border rounded-lg p-2">
-                <div className="text-sm font-medium">{n.data.title || "Output"}</div>
-                <div className="text-xs text-zinc-500">{n.data.destination?.kind ?? "not set"}</div>
-                <div className="text-xs mt-1">schedule: <b>{n.data.schedule ?? "—"}</b></div>
-              </div>
-            ))}
-            {project.nodes.filter(n=> n.data.type==="output").length===0 && (
-              <div className="text-xs text-zinc-500">No output blocks yet.</div>
-            )}
-          </div>
-          <div className="h-px bg-zinc-200 my-2" />
-          <div className="text-sm font-medium mb-2">Actions</div>
-          <div className="grid grid-cols-2 gap-2">
-            <button className="rounded-lg border py-2 hover:bg-zinc-50" onClick={exportJSON}>Export JSON</button>
-            <button className="rounded-lg border py-2 hover:bg-zinc-50" onClick={()=> window.alert("Background scheduler is not implemented in the frontend.")}>Start Schedules</button>
-          </div>
-        </div>
-      )}
-    </div>
+    <button 
+      onClick={executeWorkflow}
+      disabled={executing || project.nodes.length === 0}
+      className={`px-4 py-1.5 rounded-xl text-white font-medium ${
+        executing || project.nodes.length === 0
+          ? 'bg-gray-400 cursor-not-allowed' 
+          : 'bg-[#5f4fa5] hover:bg-[#544691]'
+      }`}
+    >
+      {executing ? 'Executing...' : 'Execute'}
+    </button>
   )
-}
-
-function serializeNode(n: Node<NodeData>){
-  const d = n.data;
-  return {
-    id: n.id,
-    type: d.type,
-    title: d.title,
-    inputs: undefined, // derive from edges on backend
-    // properties by type
-    ...(d.type==="input" ? { source: d.input?.source, accountId: d.input?.boundAccountId } : {}),
-    ...(d.type==="process" || d.type==="visualize" ? { conversation: d.convo ?? [], goals: d.goals ?? [] } : {}),
-    ...(d.type==="output" ? { destination: d.destination, schedule: d.schedule } : {}),
-  };
 }
 
 // --------------------------- Utils ---------------------------
 function rid(){ return Math.random().toString(36).slice(2); }
-function slug(s:string){ return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,""); }
-// sleep/dice removed
-function downloadText(filename: string, text: string){
-  const blob = new Blob([text], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 // topo removed
 
