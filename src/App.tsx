@@ -752,16 +752,16 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   return (
     <div ref={canvasRef} className="h-[calc(100%-56px)] relative">
       {/* Palette */}
-      <div className="absolute z-10 left-4 top-4 bg-white rounded-2xl border shadow py-5 px-0 overflow-visible">
-        <div className="text-xs text-zinc-500 px-4 pb-2">Blocks</div>
-        <div className="flex items-center gap-5 px-5">
+      <div className="absolute z-10 left-4 top-4 bg-white rounded-2xl border shadow py-3 px-0 overflow-visible">
+        <div className="text-xs uppercase tracking-wide text-zinc-500 px-4 pb-2">Blocks</div>
+        <div className="flex items-center gap-4 px-5">
           <div>
             <ShapeBtn type="input" color="sky" onClick={()=>addNode("input")} onDragStart={()=>{}} />
           </div>
-          <div className="mr-[12px]">
+          <div className="mr-[1px]">
             <ShapeBtn type="process" color="violet" onClick={()=>addNode("process")} onDragStart={()=>{}} />
           </div>
-          <div className="mr-[12px]">
+          <div className="ml-[1px]">
             <ShapeBtn type="visualize" color="emerald" onClick={()=>addNode("visualize")} onDragStart={()=>{}} />
           </div>
           <div>
@@ -876,37 +876,37 @@ function ShapeBtn({ type, color: _color, onClick, onDragStart }:{ type: BlockTyp
   // Show lowercase labels as requested
   const label = type;
   const fill = type==='input' ? '#17BDFD' : type==='process' ? '#F14D1D' : type==='visualize' ? '#A259FF' : '#03CF83';
+  const H = 64; // unified visual height for all shapes
+  const TRI_W = Math.round(H * Math.sqrt(3) / 2);
+  const DIAMOND_SIDE = Math.round(H / Math.sqrt(2)); // rotated square fits into H
+  const BOX_W = 64; // unify width for consistent spacing
+
   let shape: React.ReactElement;
   if(type==='input'){
-    const h = 64;
-    const w = Math.round(h * Math.sqrt(3) / 2);
+    const h = H;
+    const w = TRI_W;
     const vX = w - 0.5; // align vertical stroke on pixel grid
     shape = (
-      <svg className="relative z-10 block" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-        {/* fill */}
+      <svg className="block" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <polygon points={`0,${h/2} ${w},0 ${w},${h}`} fill={fill} />
-        {/* edges */}
         <line x1={0} y1={h/2} x2={w} y2={0} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
-        <line x1={vX} y1={0} x2={vX} y2={h} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+        <line x1={vX} y1={0} x2={vX} y2={h} stroke="#000" strokeWidth={1.5} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
         <line x1={w} y1={h} x2={0} y2={h/2} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
       </svg>
     );
   } else if(type==='process'){
-    shape = <div className="relative z-10 block" style={{ width: 64, height: 64, background: fill, border: '1px solid #000' }} />;
+    shape = <div className="block" style={{ width: H, height: H, background: fill, border: '1px solid #000' }} />;
   } else if(type==='visualize'){
-    // Slightly smaller to match visual weight of triangles/square
-    shape = <div className="relative z-10 block" style={{ width: 56, height: 56, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />;
+    shape = <div className="block" style={{ width: DIAMOND_SIDE, height: DIAMOND_SIDE, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />;
   } else {
-    const h = 64;
-    const w = Math.round(h * Math.sqrt(3) / 2);
+    const h = H;
+    const w = TRI_W;
     const vX = 0.5; // align vertical stroke on pixel grid (left side)
     shape = (
-      <svg className="relative z-10 block" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-        {/* fill */}
+      <svg className="block" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <polygon points={`0,0 0,${h} ${w},${h/2}`} fill={fill} />
-        {/* edges */}
         <line x1={0} y1={0} x2={w} y2={h/2} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
-        <line x1={vX} y1={0} x2={vX} y2={h} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+        <line x1={vX} y1={0} x2={vX} y2={h} stroke="#000" strokeWidth={1.5} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
         <line x1={w} y1={h/2} x2={0} y2={h} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
       </svg>
     );
@@ -915,8 +915,10 @@ function ShapeBtn({ type, color: _color, onClick, onDragStart }:{ type: BlockTyp
   return (
     <div className="flex items-center justify-center">
       <button onClick={onClick} draggable={false} onDragStart={onDragStart} className="relative flex flex-col items-center">
-        {shape}
-        <div className="text-[12px] text-black font-bold" style={{ marginLeft: labelShift, marginTop: type==='visualize' ? 16 : 8 }}>
+        <div className="grid place-items-center" style={{ width: BOX_W, height: H }}>
+          {shape}
+        </div>
+        <div className="text-[12px] text-black font-bold" style={{ marginLeft: labelShift, marginTop: 6 }}>
           {label}
         </div>
       </button>
@@ -972,25 +974,30 @@ function CanvasNode(props: NodeProps<NodeData>){
   // Keep process 100x100, others 100 tall; make input/output equilateral (width = sqrt(3)/2 * height)
   const isTriangle = t==='input' || t==='output';
   const sizeH = 100;
-  const sizeW = t==='process' ? 100 : (isTriangle ? Math.round(sizeH * Math.sqrt(3) / 2) : 120);
+  const sizeW = t==='process' ? 100 : (t==='visualize' ? sizeH : (isTriangle ? Math.round(sizeH * Math.sqrt(3) / 2) : 120));
   
-  // Base colors
+  // Base colors; selected becomes slightly lighter
   const baseColors = {
     input: '#17BDFD',
     process: '#F14D1D', 
     visualize: '#A259FF',
     output: '#03CF83'
   };
-  
-  // Lighter colors for selection (increase brightness/opacity)
-  const selectedColors = {
-    input: '#87DAFE',
-    process: '#F8A08E',
-    visualize: '#D1ACFF',
-    output: '#81E7C1'
+  const lightenHex = (hex: string, amt: number) => {
+    try {
+      const h = hex.replace('#','');
+      const r = parseInt(h.slice(0,2), 16);
+      const g = parseInt(h.slice(2,4), 16);
+      const b = parseInt(h.slice(4,6), 16);
+      const f = (v:number)=> Math.max(0, Math.min(255, Math.round(v + (255 - v) * amt)));
+      const to2 = (v:number)=> v.toString(16).padStart(2, '0');
+      return `#${to2(f(r))}${to2(f(g))}${to2(f(b))}`;
+    } catch { return hex; }
   };
-  
-  const fill = isSelected ? selectedColors[t] : baseColors[t];
+  const fill = (props.data._selected ? lightenHex(baseColors[t], 0.3) : baseColors[t]);
+  // Border thickness to indicate selection
+  const edgeStroke = isSelected ? 3 : 1;     // diagonal edges
+  const vertStroke = isSelected ? 4 : 1.5;   // vertical edge slightly thicker for visual parity
 
   const makeHandles = (side: 'left'|'right', count: number, type: 'source'|'target') => {
     const arr: React.ReactElement[] = [];
@@ -1019,10 +1026,15 @@ function CanvasNode(props: NodeProps<NodeData>){
       }} 
     >
       {t==='process' && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW, height: sizeH, background: fill, border: '1px solid #000' }} />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW, height: sizeH, background: fill, border: `${isSelected ? 4 : 1}px solid #000` }} />
       )}
       {t==='visualize' && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW*0.8, height: sizeH*0.8, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />
+        (() => {
+          const side = Math.round(sizeH / Math.sqrt(2));
+          return (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: side, height: side, background: fill, transform: 'rotate(45deg)', border: `${isSelected ? 4 : 1}px solid #000` }} />
+          );
+        })()
       )}
       {t==='input' && (
         // Equilateral right-facing triangle with crisp, uniform edges
@@ -1030,9 +1042,9 @@ function CanvasNode(props: NodeProps<NodeData>){
           {/* fill */}
           <polygon points={`0,${sizeH/2} ${sizeW},0 ${sizeW},${sizeH}`} fill={fill} />
           {/* edges */}
-          <line x1={0} y1={sizeH/2} x2={sizeW} y2={0} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
-          <line x1={sizeW - 0.5} y1={0} x2={sizeW - 0.5} y2={sizeH} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
-          <line x1={sizeW} y1={sizeH} x2={0} y2={sizeH/2} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+          <line x1={0} y1={sizeH/2} x2={sizeW} y2={0} stroke="#000" strokeWidth={edgeStroke} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+          <line x1={sizeW - 0.5} y1={0} x2={sizeW - 0.5} y2={sizeH} stroke="#000" strokeWidth={vertStroke} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+          <line x1={sizeW} y1={sizeH} x2={0} y2={sizeH/2} stroke="#000" strokeWidth={edgeStroke} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
         </svg>
       )}
       {t==='output' && (
@@ -1041,9 +1053,9 @@ function CanvasNode(props: NodeProps<NodeData>){
           {/* fill */}
           <polygon points={`0,0 0,${sizeH} ${sizeW},${sizeH/2}`} fill={fill} />
           {/* edges */}
-          <line x1={0} y1={0} x2={sizeW} y2={sizeH/2} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
-          <line x1={0.5} y1={0} x2={0.5} y2={sizeH} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
-          <line x1={sizeW} y1={sizeH/2} x2={0} y2={sizeH} stroke="#000" strokeWidth={1} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+          <line x1={0} y1={0} x2={sizeW} y2={sizeH/2} stroke="#000" strokeWidth={edgeStroke} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+          <line x1={0.5} y1={0} x2={0.5} y2={sizeH} stroke="#000" strokeWidth={vertStroke} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
+          <line x1={sizeW} y1={sizeH/2} x2={0} y2={sizeH} stroke="#000" strokeWidth={edgeStroke} shapeRendering="crispEdges" vectorEffect="non-scaling-stroke" />
         </svg>
       )}
 
