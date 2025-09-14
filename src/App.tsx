@@ -741,9 +741,9 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   return (
     <div ref={canvasRef} className="h-[calc(100%-56px)] relative">
       {/* Palette */}
-      <div className="absolute z-10 left-4 top-4 bg-white/90 backdrop-blur rounded-2xl border shadow p-3 overflow-visible">
-        <div className="text-xs text-zinc-500 px-1 pb-2">Blocks</div>
-        <div className="grid grid-cols-4 gap-3">
+      <div className="absolute z-10 left-4 top-4 bg-white/90 backdrop-blur rounded-2xl border shadow py-4 px-0 overflow-visible">
+        <div className="text-xs text-zinc-500 px-4 pb-2">Blocks</div>
+        <div className="grid grid-cols-4 gap-6 px-6">
           <ShapeBtn type="input" color="sky" onClick={()=>addNode("input")} onDragStart={()=>{}} />
           <ShapeBtn type="process" color="violet" onClick={()=>addNode("process")} onDragStart={()=>{}} />
           <ShapeBtn type="visualize" color="emerald" onClick={()=>addNode("visualize")} onDragStart={()=>{}} />
@@ -757,7 +757,12 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         nodes={nodes.map(n=> {
           const inCount = edges.filter(e=> e.target===n.id).length;
           const outCount = edges.filter(e=> e.source===n.id).length;
-          return { ...n, type: (n.data.type as any), data: { ...n.data, _in: inCount, _out: outCount } };
+          return { 
+            ...n, 
+            type: (n.data.type as any), 
+            style: { background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 },
+            data: { ...n.data, _in: inCount, _out: outCount }
+          };
         })}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -842,23 +847,29 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
 }
 
 function ShapeBtn({ type, color: _color, onClick, onDragStart }:{ type: BlockType; color: 'sky'|'violet'|'emerald'|'amber'; onClick:()=>void; onDragStart:(e:React.DragEvent)=>void }){
-  const label = titleFor(type);
+  // Show lowercase labels as requested
+  const label = type;
   const fill = type==='input' ? '#17BDFD' : type==='process' ? '#F14D1D' : type==='visualize' ? '#A259FF' : '#03CF83';
   let shape: React.ReactElement;
   if(type==='input'){
-    shape = <div className="relative z-10" style={{ width: 80, height: 64, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)', border: '1px solid #000' }} />;
+    const h = 64; // back to 64
+    const w = Math.round(h * Math.sqrt(3) / 2);
+    shape = <div className="relative z-10" style={{ width: w, height: h, background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)', border: '1px solid #000' }} />;
   } else if(type==='process'){
-    shape = <div className="relative z-10" style={{ width: 56, height: 56, background: fill, border: '1px solid #000' }} />;
+    shape = <div className="relative z-10" style={{ width: 64, height: 64, background: fill, border: '1px solid #000' }} />;
   } else if(type==='visualize'){
-    shape = <div className="relative z-10" style={{ width: 46, height: 46, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />;
+    // Slightly smaller to match visual weight of triangles/square
+    shape = <div className="relative z-10" style={{ width: 56, height: 56, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />;
   } else {
-    shape = <div className="relative z-10" style={{ width: 80, height: 64, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)', border: '1px solid #000' }} />;
+    const h = 64; // back to 64
+    const w = Math.round(h * Math.sqrt(3) / 2);
+    shape = <div className="relative z-10" style={{ width: w, height: h, background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)', border: '1px solid #000' }} />;
   }
   return (
     <div className="flex items-center justify-center">
       <button onClick={onClick} draggable={false} onDragStart={onDragStart} className="relative">
         {shape}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] font-bold text-black whitespace-nowrap">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[12px] text-black whitespace-nowrap z-20">
           {label}
         </div>
       </button>
@@ -910,8 +921,10 @@ function CanvasNode(props: NodeProps<NodeData>){
     : t==='process' ? { leftTargets: inCount + 1, rightSources: outCount + 1 }
     : t==='visualize' ? { leftTargets: 1, rightSources: 1 }
     : { leftTargets: inCount + 1, rightSources: 0 };
-  const sizeW = t==='process' ? 100 : 120;
-  const sizeH = t==='process' ? 100 : 100;
+  // Keep process 100x100, others 100 tall; make input/output equilateral (width = sqrt(3)/2 * height)
+  const isTriangle = t==='input' || t==='output';
+  const sizeH = 100;
+  const sizeW = t==='process' ? 100 : (isTriangle ? Math.round(sizeH * Math.sqrt(3) / 2) : 120);
   const fill = t==='input' ? '#17BDFD' : t==='process' ? '#F14D1D' : t==='visualize' ? '#A259FF' : '#03CF83';
 
   const makeHandles = (side: 'left'|'right', count: number, type: 'source'|'target') => {
@@ -940,9 +953,11 @@ function CanvasNode(props: NodeProps<NodeData>){
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: sizeW*0.8, height: sizeH*0.8, background: fill, transform: 'rotate(45deg)', border: '1px solid #000' }} />
       )}
       {t==='input' && (
+        // Equilateral right-facing triangle: vertical side on the right
         <div className="absolute inset-0" style={{ background: fill, clipPath: 'polygon(0 50%, 100% 0, 100% 100%)', border: '1px solid #000' }} />
       )}
       {t==='output' && (
+        // Equilateral left-facing triangle: vertical side on the left
         <div className="absolute inset-0" style={{ background: fill, clipPath: 'polygon(0 0, 0 100%, 100% 50%)', border: '1px solid #000' }} />
       )}
 
