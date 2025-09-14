@@ -1643,11 +1643,15 @@ function ExecBar({ project }:{ project: Project }){
           
         case 'output':
           if (nodeData.destination?.kind === 'email' && nodeData.destination.config?.email) {
-            block.email_dest = nodeData.destination.config.email;
-            block.block_type = 'destination';
+            block.output_source = 'email';
+            block.output_data = nodeData.destination.config.email;
+          } else if (nodeData.destination?.kind === 'slack' && nodeData.destination.config?.channel) {
+            block.output_source = 'slack';
+            block.output_data = nodeData.destination.config.channel;
           } else {
-            block.init_script = 'print("Output processed")';
-            block.block_type = 'output';
+            // Default fallback - could be configured in UI
+            block.output_source = 'email';
+            block.output_data = 'default@example.com';
           }
           break;
       }
@@ -1664,10 +1668,11 @@ function ExecBar({ project }:{ project: Project }){
     try {
       const blocks = compileBlocksForExecution();
       
-      // Show the compiled JSON in an alert
+      // Show the compiled JSON in an alert for debugging
       alert('Compiled JSON for execution:\n\n' + JSON.stringify(blocks, null, 2));
       
-      const response = await fetch('http://localhost:8080/blocks/execute', {
+      // Execute the pipeline using the pipeline executor
+      const response = await fetch('http://localhost:8080/execute_pipeline', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1677,10 +1682,15 @@ function ExecBar({ project }:{ project: Project }){
 
       const result = await response.json();
       
-      if (result.success) {
-        console.log('Workflow executed successfully:', result);
+      if (result.status === 'success') {
+        console.log('Pipeline executed successfully:', result);
+        alert(`Pipeline executed successfully!\n\nDestinations processed: ${result.destinations_processed}\n\nCheck console for detailed results.`);
+      } else if (result.error) {
+        console.error('Pipeline execution failed:', result);
+        alert(`Pipeline execution failed:\n\n${result.error}`);
       } else {
-        console.error('Workflow execution failed:', result);
+        console.log('Pipeline execution result:', result);
+        alert('Pipeline execution completed. Check console for details.');
       }
     } catch (error) {
       console.error('Error executing workflow:', error);
