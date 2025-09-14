@@ -1143,8 +1143,9 @@ function CanvasNode(props: NodeProps<NodeData>){
 // --------------------------- Node Modals ---------------------------
 function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
-  const [kind, setKind] = useState<InputSourceKind>((d.input?.source.kind) || "csv");
-  const [cfg, setCfg] = useState<InputConfig>(d.input?.source || { kind: "csv", delimiter: "," });
+  // Default to URL as first option
+  const [kind, setKind] = useState<InputSourceKind>((d.input?.source.kind) || "url");
+  const [cfg, setCfg] = useState<InputConfig>(d.input?.source || ({ kind: "url" } as any));
 
   const updateCfg = (patch: Partial<InputConfig>) => setCfg(prev => ({...prev, ...patch} as any));
 
@@ -1195,9 +1196,9 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
         </div>
         {kind==="url" && (
           <div>
-            <label className="text-xs">Data URL</label>
+            <label className="text-xs">Input Data URL</label>
             <input 
-              className="mt-1 w-full border rounded-lg px-2 py-2" 
+              className="mt-1 w-full border rounded-lg px-3 h-11.5" 
               placeholder="https://example.com/data.csv" 
               value={(cfg as any).url || ""}
               onChange={(e)=> updateCfg({ url: e.target.value } as any)} 
@@ -1210,7 +1211,7 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
             <input 
               type="file" 
               accept=".csv" 
-              className="mt-1 w-full border rounded-lg px-2 py-2 file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-sm file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100" 
+              className="mt-1 w-full border rounded-lg px-2 py-2 text-zinc-500 file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-sm file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100" 
               onChange={(e)=> {
                 const file = e.target.files?.[0];
                 if (file) updateCfg({ path: file.name } as any);
@@ -1263,7 +1264,7 @@ function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClos
           </div>
         )}
 
-        <div className="flex justify-end pt-4 border-t mt-4">
+        <div className="flex justify-end pt-[5px] mt-[5px]">
           <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
@@ -1297,7 +1298,7 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
             onChange={(e) => setTransformation(e.target.value)}
           />
         </div>
-        <div className="flex justify-end pt-4 mt-4">
+        <div className="flex justify-end pt-2 mt-2">
           <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
