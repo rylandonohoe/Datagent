@@ -1445,6 +1445,8 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
 // --------------------------- Exec Bar (top-right) ---------------------------
 function ExecBar({ project }:{ project: Project }){
   const [open, setOpen] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<any>(null);
 
   const exportJSON = () => {
     const payload = {
@@ -1460,14 +1462,168 @@ function ExecBar({ project }:{ project: Project }){
     downloadText(`${slug(project.name)}.datagent.json`, text);
   };
 
+  const compileBlocksForExecution = () => {
+    const blocks: any[] = [];
+    
+    // Process each node and convert to backend API format
+    project.nodes.forEach(node => {
+      const nodeData = node.data;
+      let block: any = {
+        block_id: parseInt(node.id.split('-')[1]) || Math.floor(Math.random() * 1000),
+        block_type: mapNodeTypeToBlockType(nodeData.type)
+      };
+
+      // Add prerequisites based on edges
+      const incomingEdges = project.edges.filter(edge => edge.target === node.id);
+      if (incomingEdges.length > 0) {
+        block.pre_req = incomingEdges.map(edge => {
+          const sourceNode = project.nodes.find(n => n.id === edge.source);
+          return parseInt(sourceNode?.id.split('-')[1] || '0') || Math.floor(Math.random() * 1000);
+        });
+      }
+
+      // Add block-specific fields
+      switch (nodeData.type) {
+        case 'input':
+          if (nodeData.input?.source?.kind === 'csv' && (nodeData.input.source as any).path) {
+            block.csv_source = (nodeData.input.source as any).path;
+          } else {
+            block.csv_source = '/path/to/default.csv'; // fallback
+          }
+          break;
+          
+        case 'process':
+          // Get the latest user message from conversation
+          const userMessages = nodeData.convo?.filter(turn => turn.role === 'user') || [];
+          block.prompt = userMessages.length > 0 
+            ? userMessages[userMessages.length - 1].content 
+            : 'Process the data';
+          break;
+          
+        case 'visualize':
+          // Get the latest user message from conversation
+          const vizUserMessages = nodeData.convo?.filter(turn => turn.role === 'user') || [];
+          block.prompt = vizUserMessages.length > 0 
+            ? vizUserMessages[vizUserMessages.length - 1].content 
+            : 'Create a visualization';
+          // Map visualize to process for backend
+          block.block_type = 'process';
+          break;
+          
+        case 'output':
+          if (nodeData.destination?.kind === 'email' && nodeData.destination.config?.email) {
+            block.email_dest = nodeData.destination.config.email;
+            block.block_type = 'destination';
+          } else {
+            block.init_script = 'print("Output processed")';
+            block.block_type = 'output';
+          }
+          break;
+      }
+
+      blocks.push(block);
+    });
+
+    return blocks;
+  };
+
+  const executeWorkflow = async () => {
+    setExecuting(true);
+    setExecutionResult(null);
+    
+    try {
+      const blocks = compileBlocksForExecution();
+      
+      // Show the compiled JSON in an alert
+      alert('Compiled JSON for execution:\n\n' + JSON.stringify(blocks, null, 2));
+      
+      const response = await fetch('http://localhost:8080/blocks/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(blocks)
+      });
+
+      const result = await response.json();
+      setExecutionResult(result);
+      
+      if (result.success) {
+        console.log('Workflow executed successfully:', result);
+      } else {
+        console.error('Workflow execution failed:', result);
+      }
+    } catch (error) {
+      console.error('Error executing workflow:', error);
+      setExecutionResult({ 
+        success: false, 
+        error: `Network error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const mapNodeTypeToBlockType = (nodeType: string): string => {
+    switch (nodeType) {
+      case 'input': return 'input_source';
+      case 'process': return 'process';
+      case 'visualize': return 'process'; // visualize maps to process
+      case 'output': return 'output'; // will be changed to 'destination' if email
+      default: return 'process';
+    }
+  };
+
   return (
     <div className="relative">
-      <button onClick={()=>setOpen(o=>!o)} className="relative pl-3 pr-10 py-1.5 rounded-xl border bg-white hover:bg-zinc-200">
-        <span>Execution</span>
-        <span className={`pointer-events-none absolute right-[20px] top-1/2 -translate-y-1/2 text-zinc-500 ${open?'-rotate-270':'rotate-270'}`}>⟨</span>
-      </button>
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={executeWorkflow}
+          disabled={executing || project.nodes.length === 0}
+          className={`px-4 py-1.5 rounded-xl text-white font-medium ${
+            executing || project.nodes.length === 0
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : 'bg-green-600 hover:bg-green-700'
+          }`}
+        >
+          {executing ? 'Executing...' : 'Execute'}
+        </button>
+        <button onClick={()=>setOpen(o=>!o)} className="relative pl-3 pr-10 py-1.5 rounded-xl border bg-white hover:bg-zinc-200">
+          <span>Options</span>
+          <span className={`pointer-events-none absolute right-[20px] top-1/2 -translate-y-1/2 text-zinc-500 ${open?'-rotate-270':'rotate-270'}`}>⟨</span>
+        </button>
+      </div>
       {open && (
-        <div className="absolute right-0 mt-2 w-[380px] bg-white border rounded-xl shadow-xl p-3 z-20">
+        <div className="absolute right-0 mt-2 w-[420px] bg-white border rounded-xl shadow-xl p-3 z-20">
+          {/* Execution Results */}
+          {executionResult && (
+            <div className="mb-4">
+              <div className="text-sm font-medium mb-2">Last Execution Result</div>
+              <div className={`p-3 rounded-lg border ${executionResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className={`text-sm font-medium ${executionResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                  {executionResult.success ? '✅ Success' : '❌ Failed'}
+                </div>
+                <div className="text-xs mt-1 text-gray-600">
+                  {executionResult.message || executionResult.error}
+                </div>
+                {executionResult.success && (
+                  <div className="text-xs mt-1 text-gray-500">
+                    Processed {executionResult.processed_blocks || 0} blocks
+                  </div>
+                )}
+                {executionResult.errors && executionResult.errors.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-red-700">Errors:</div>
+                    {executionResult.errors.map((error: string, idx: number) => (
+                      <div key={idx} className="text-xs text-red-600 mt-1">• {error}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="h-px bg-zinc-200 my-3" />
+            </div>
+          )}
+          
           <div className="text-sm font-medium mb-2">Schedules</div>
           <div className="max-h-60 overflow-auto space-y-2">
             {project.nodes.filter(n=> n.data.type==="output").map(n=> (

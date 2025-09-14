@@ -212,6 +212,159 @@ def orchestrate_with_data_agent():
         logging.exception('Data Agent orchestration failed')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/blocks/execute', methods=['POST'])
+def execute_blocks():
+    """Handle block execution requests with array of block objects.
+    
+    Expected JSON format (array of blocks):
+    [
+      {
+        "block_type": "input_source",
+        "block_id": 1,
+        "csv_source": "path/to/file.csv"
+      },
+      {
+        "block_type": "process", 
+        "block_id": 2,
+        "pre_req": [1],
+        "prompt": "user prompt for transformation"
+      },
+      {
+        "block_type": "output",
+        "block_id": 3,
+        "pre_req": [2],
+        "init_script": "python code"
+      },
+      {
+        "block_type": "destination",
+        "block_id": 4,
+        "pre_req": [3],
+        "email_dest": "email@example.com"
+      }
+    ]
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Expect an array of blocks
+        if not isinstance(data, list):
+            return jsonify({'error': 'Expected an array of block objects'}), 400
+        
+        if len(data) == 0:
+            return jsonify({'error': 'Empty blocks array provided'}), 400
+        
+        # Valid block types
+        valid_block_types = ['input_source', 'process', 'output', 'destination']
+        
+        # Log the start of execution
+        logging.info("=" * 60)
+        logging.info("BLOCKS EXECUTION REQUEST")
+        logging.info(f"Total blocks received: {len(data)}")
+        logging.info("=" * 60)
+        
+        processed_blocks = []
+        errors = []
+        
+        # Process each block
+        for i, block in enumerate(data):
+            try:
+                # Validate required fields
+                block_type = block.get('block_type')
+                block_id = block.get('block_id')
+                
+                if not block_type or block_id is None:
+                    error_msg = f'Block {i}: block_type and block_id are required'
+                    errors.append(error_msg)
+                    continue
+                
+                if block_type not in valid_block_types:
+                    error_msg = f'Block {i}: Invalid block_type "{block_type}". Must be one of: {valid_block_types}'
+                    errors.append(error_msg)
+                    continue
+                
+                # Log block details
+                logging.info(f"--- BLOCK {i+1} ---")
+                logging.info(f"Block Type: {block_type}")
+                logging.info(f"Block ID: {block_id}")
+                logging.info(f"Prerequisites: {block.get('pre_req', [])}")
+                
+                # Validate and log block-specific fields
+                block_valid = True
+                
+                if block_type == 'input_source':
+                    csv_source = block.get('csv_source')
+                    logging.info(f"CSV Source: {csv_source}")
+                    if not csv_source:
+                        errors.append(f'Block {block_id}: csv_source is required for input_source blocks')
+                        block_valid = False
+                        
+                elif block_type == 'process':
+                    prompt = block.get('prompt')
+                    logging.info(f"Prompt: {prompt}")
+                    if not prompt:
+                        errors.append(f'Block {block_id}: prompt is required for process blocks')
+                        block_valid = False
+                        
+                elif block_type == 'output':
+                    init_script = block.get('init_script', '')
+                    logging.info(f"Init Script: {init_script}")
+                    
+                elif block_type == 'destination':
+                    email_dest = block.get('email_dest')
+                    logging.info(f"Email Destination: {email_dest}")
+                    if not email_dest:
+                        errors.append(f'Block {block_id}: email_dest is required for destination blocks')
+                        block_valid = False
+                
+                # Log complete block data
+                logging.info(f"Complete Block Data: {block}")
+                
+                if block_valid:
+                    processed_blocks.append({
+                        'block_id': block_id,
+                        'block_type': block_type,
+                        'status': 'processed',
+                        'pre_req': block.get('pre_req', [])
+                    })
+                    logging.info(f"Block {block_id} processed successfully")
+                else:
+                    logging.info(f"Block {block_id} failed validation")
+                
+                logging.info("-" * 30)
+                
+            except Exception as e:
+                error_msg = f'Block {i}: Error processing block - {str(e)}'
+                errors.append(error_msg)
+                logging.error(error_msg)
+        
+        logging.info("=" * 60)
+        logging.info("END BLOCKS EXECUTION REQUEST")
+        logging.info("=" * 60)
+        
+        # Prepare response
+        response = {
+            'success': len(errors) == 0,
+            'total_blocks': len(data),
+            'processed_blocks': len(processed_blocks),
+            'failed_blocks': len(errors),
+            'blocks': processed_blocks,
+            'timestamp': pd.Timestamp.now().isoformat()
+        }
+        
+        if errors:
+            response['errors'] = errors
+            return jsonify(response), 400
+        else:
+            response['message'] = f'Successfully processed {len(processed_blocks)} blocks'
+            return jsonify(response)
+        
+    except Exception as e:
+        logging.error(f"Error processing blocks request: {str(e)}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy'})
