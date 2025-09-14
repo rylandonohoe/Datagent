@@ -26,25 +26,75 @@ def generate_visualization():
         data = request.get_json()
         user_input = data.get('user_input', '')
         chart_code = data.get('chart_code', '')
+        graph_context = data.get('graph_context', {})
         
         if not user_input:
             return jsonify({'error': 'No user input provided'}), 400
         
+        # Extract context information
+        files = graph_context.get('files', [])
+        prompts = graph_context.get('prompts', [])
+        
+        # Try to load and analyze the actual CSV data
+        df_info = None
+        sample_data = None
+        
+        if files:
+            # Use the first CSV file found
+            csv_path = files[0]
+            try:
+                # Load the CSV file
+                df_sample = pd.read_csv(csv_path, nrows=5)  # Load first 5 rows for analysis
+                # Clean column names for consistency
+                df_sample.columns = df_sample.columns.str.replace('/', '_').str.replace(' ', '_').str.strip()
+                df_info = {
+                    'columns': list(df_sample.columns),
+                    'dtypes': {col: str(dtype) for col, dtype in df_sample.dtypes.items()},
+                    'sample_values': df_sample.to_dict('records')
+                }
+                sample_data = df_sample.head(3).to_string(index=False)
+            except Exception as e:
+                print(f"Error loading CSV {csv_path}: {e}")
+                # Fallback to iris dataset
+                df_info = {
+                    'columns': ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species'],
+                    'dtypes': {'sepal_length': 'float64', 'sepal_width': 'float64', 'petal_length': 'float64', 'petal_width': 'float64', 'species': 'object'},
+                    'sample_values': []
+                }
+                sample_data = "sepal_length  sepal_width  petal_length  petal_width species\n5.1           3.5          1.4           0.2         setosa"
+        else:
+            # Default to iris dataset
+            df_info = {
+                'columns': ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species'],
+                'dtypes': {'sepal_length': 'float64', 'sepal_width': 'float64', 'petal_length': 'float64', 'petal_width': 'float64', 'species': 'object'},
+                'sample_values': []
+            }
+            sample_data = "sepal_length  sepal_width  petal_length  petal_width species\n5.1           3.5          1.4           0.2         setosa"
+        
+        # Build context string
+        context_info = f"Dataset: {files[0] if files else 'iris dataset'}\n"
+        context_info += f"Columns: {', '.join(df_info['columns'])}\n"
+        if sample_data:
+            context_info += f"Sample data:\n{sample_data}\n"
+        if prompts:
+            context_info += f"Previous prompts: {'; '.join(prompts)}\n"
+        
         # Prompt template for OpenAI
         prompt_template = (
-            "You are an expert Python data visualization assistant. The user is working with the iris dataset from seaborn (https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv).\n"
-            "The DataFrame 'df' has these columns: sepal_length, sepal_width, petal_length, petal_width, species.\n"
+            "You are an expert Python data visualization assistant.\n"
+            f"{context_info}\n"
             "Your task:\n"
             "- YOUR NEXT RESPONSE MUST STRICTLY BE PYTHON CODE ONLY. NO EXPLANATIONS, NO MARKDOWN, NO COMMENTS OUTSIDE THE CODE.\n"
-            "- Given the current Altair code and the user's modification request, generate a single, complete, and valid Altair code snippet that implements the user's intent.\n"
-            "- The code must use only the columns listed above and must be executable as-is in a Python environment.\n"
+            "- Generate a complete Altair visualization that uses the actual dataset columns shown above.\n"
+            "- The code must be executable as-is in a Python environment.\n"
             "- Do NOT include any markdown formatting or triple backticks—return only the code.\n"
             "- Always assign the chart to a variable named 'chart'.\n"
             "- Always add a chart title that reflects the user's request.\n"
-            "- Always add tooltip encoding to show all columns when hovering over points.\n"
-            "- Always add data axes and legends with appropriate titles.\n"
-            "- If the user requests a chart type or transformation that is not possible with Altair or the iris dataset, return the closest valid alternative and explain the change in a Python comment at the top of the code.\n"
-            f"Current Altair code:\n{chart_code}\nUser request:\n{user_input}\nReturn only the new Python code for the chart, using Altair and the same DataFrame variable 'df'."
+            "- Always add tooltip encoding to show relevant columns when hovering.\n"
+            "- Always add appropriate axes labels and legends.\n"
+            "- Use only the columns that exist in the dataset.\n"
+            f"User request: {user_input}\n"
+            "Return only the Python code for the chart using Altair and the DataFrame variable 'df'."
         )
         
         # Call OpenAI API
@@ -61,7 +111,18 @@ def generate_visualization():
         # Execute the code safely with error handling
         error_msg = None
         chart_html = ''
-        df = pd.read_csv(DATA_URL)
+        
+        # Load the actual dataset or fallback to iris
+        if files:
+            try:
+                df = pd.read_csv(files[0])
+                # Clean column names to match what AI expects
+                df.columns = df.columns.str.replace('/', '_').str.replace(' ', '_').str.strip()
+            except Exception as e:
+                print(f"Error loading CSV {files[0]}: {e}")
+                df = pd.read_csv(DATA_URL)  # Fallback to iris
+        else:
+            df = pd.read_csv(DATA_URL)  # Default to iris
         
         local_vars = {'df': df, 'alt': alt, 'pd': pd}
         cleaned_code = new_code.strip()

@@ -909,7 +909,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         <ProcessNodeModal node={nodes.find(n=>n.id===processModalId)!} onClose={()=>setShowProcessModal("", false)} onSave={(d)=> setNodeData(processModalId, ()=> d)} />
       )}
       {!!visualizeModalId && (
-        <VisualizeNodeModal node={nodes.find(n=>n.id===visualizeModalId)!} onClose={()=>setVisualizeModalId(null)} onSave={(d)=> setNodeData(visualizeModalId, ()=> d)} />
+        <VisualizeNodeModal node={nodes.find(n=>n.id===visualizeModalId)!} onClose={()=>setVisualizeModalId(null)} onSave={(d)=> setNodeData(visualizeModalId, ()=> d)} project={project} />
       )}
       {!!outputModalId && (
         <OutputNodeModal node={nodes.find(n=>n.id===outputModalId)!} onClose={()=>setOutputModalId(null)} onSave={(d)=> setNodeData(outputModalId, ()=> d)} />
@@ -1330,13 +1330,42 @@ function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onCl
   )
 }
 
-function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function VisualizeNodeModal({ node, onClose, onSave: _onSave, project }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void; project: Project }){
   void node; // keep param used
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [chartHtml, setChartHtml] = useState("");
   const [error, setError] = useState("");
-  // no local sample data needed
+  
+  // Extract context from project graph
+  const getGraphContext = () => {
+    const files: string[] = [];
+    const prompts: string[] = [];
+    
+    // Extract CSV files from input nodes
+    project.nodes.forEach(node => {
+      if (node.data.type === 'input' && node.data.input?.source?.kind === 'csv') {
+        const path = (node.data.input.source as any).path;
+        if (path && !files.includes(path)) {
+          files.push(path);
+        }
+      }
+    });
+
+    // Extract prompts from process and visualize nodes
+    project.nodes.forEach(node => {
+      if ((node.data.type === 'process' || node.data.type === 'visualize') && node.data.convo) {
+        const userMessages = node.data.convo.filter(turn => turn.role === 'user');
+        userMessages.forEach(msg => {
+          if (msg.content && !prompts.includes(msg.content)) {
+            prompts.push(msg.content);
+          }
+        });
+      }
+    });
+
+    return { files, prompts };
+  };
 
   const generateVisualization = async () => {
     if (!userInput.trim()) return;
@@ -1345,6 +1374,7 @@ function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<Node
     setError("");
 
     try {
+      const context = getGraphContext();
       const response = await fetch('http://localhost:8080/generate', {
         method: 'POST',
         headers: {
@@ -1352,7 +1382,11 @@ function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<Node
         },
         body: JSON.stringify({
           user_input: userInput,
-          chart_code: ""
+          chart_code: "",
+          graph_context: {
+            files: context.files,
+            prompts: context.prompts
+          }
         })
       });
 
