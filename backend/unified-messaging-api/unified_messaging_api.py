@@ -21,28 +21,50 @@ email_sender = EmailSender()
 slack_sender = SlackSender()
 
 def load_config():
-    """Load email and Slack configuration"""
+    """Load email and Slack configuration.
+    Priority:
+      1) email_config.json if present
+      2) SMTP_SENDER_EMAIL / SMTP_SENDER_PASSWORD env vars
+    Slack token from SLACK_BOT_TOKEN env.
+    """
+    ok = True
+    # Email
     try:
-        # Load email config
-        with open('email_config.json', 'r') as f:
-            email_config = json.load(f)
-        
-        email_sender.configure_smtp(
-            sender_email=email_config['email_address'],
-            sender_password=email_config['email_password'],
-            smtp_server=email_config.get('smtp_server', 'smtp.gmail.com'),
-            smtp_port=email_config.get('smtp_port', 587)
-        )
-        
-        # Load Slack token from environment or config
+        if os.path.exists('email_config.json'):
+            with open('email_config.json', 'r') as f:
+                email_config = json.load(f)
+            email_sender.configure_smtp(
+                sender_email=email_config['email_address'],
+                sender_password=email_config['email_password'],
+                smtp_server=email_config.get('smtp_server', 'smtp.gmail.com'),
+                smtp_port=email_config.get('smtp_port', 587)
+            )
+            logger.info("Email configured from email_config.json")
+        else:
+            env_email = os.getenv('SMTP_SENDER_EMAIL')
+            env_pass = os.getenv('SMTP_SENDER_PASSWORD')
+            if env_email and env_pass:
+                email_sender.configure_smtp(env_email, env_pass)
+                logger.info("Email configured from environment variables")
+            else:
+                logger.warning("No email configuration found (email_config.json or env). Email sending may fail.")
+    except Exception as e:
+        logger.error(f"Failed to configure email: {e}")
+        ok = False
+
+    # Slack
+    try:
         slack_token = os.getenv('SLACK_BOT_TOKEN')
         if slack_token:
             slack_sender.configure_token(slack_token)
-        
-        return True
+            logger.info("Slack token configured from environment")
+        else:
+            logger.warning("SLACK_BOT_TOKEN not set; Slack sending may fail.")
     except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        return False
+        logger.error(f"Failed to configure Slack: {e}")
+        ok = False
+
+    return ok
 
 # Load config on startup
 load_config()
