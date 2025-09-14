@@ -327,7 +327,7 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
             {activeProject ? (
               <div className="flex flex-col">
                 <div className="font-semibold leading-tight">{activeProject.name}</div>
-                <div className="text-sm text-zinc-500 leading-tight truncate max-w-[420px]">{activeProject.description}</div>
+                <div className="text-sm text-zinc-500 leading-tight truncate max-w-[680px]">{activeProject.description}</div>
               </div>
             ) : (
               <div className="text-sm text-zinc-600">Create a project to begin</div>
@@ -343,7 +343,7 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
 
         {/* Canvas or Empty */}
         {activeProject ? (
-          <ProjectCanvas project={activeProject} setProjects={setProjects} />
+          <ProjectCanvas key={activeProject.id} project={activeProject} setProjects={setProjects} />
         ) : (
           <EmptyState onCreate={()=>setShowCreateProject(true)} />
         )}
@@ -602,11 +602,11 @@ function CreateProjectModal({ onClose, onCreate }:{ onClose:()=>void; onCreate:(
       <div className="space-y-2.5">
         <div className="-mt-2">
           <label className="text-xs text-zinc-600">Project name</label>
-          <input className="mt-1 w-full border rounded-lg px-2 py-2" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Sales Weekly Report" />
+          <input className="mt-1 w-full border rounded-lg px-2 py-2" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Weekly Sales Report" />
         </div>
         <div>
           <label className="text-xs text-zinc-600">Global context</label>
-          <textarea className="mt-1 w-full border rounded-lg px-2 py-2 h-24" value={desc} onChange={(e)=>setDesc(e.target.value)} placeholder="Analyze weekly sales by country and deliver email + slack dashboards." required/>
+          <textarea className="mt-1 w-full border rounded-lg px-2 py-2 h-24" value={desc} onChange={(e)=>setDesc(e.target.value)} placeholder="Analyze weekly sales by country and deliver email + Slack dashboards." required/>
         </div>
         <button disabled={!name || !desc} onClick={()=>{
           const p: Project = { id: rid(), name, description: desc, nodes: [], edges: [] };
@@ -623,6 +623,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const rfInstRef = useRef<ReactFlowInstance | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
+  const initialFitDoneRef = useRef<boolean>(false);
   const [nodes, setNodes, onNodesChange] = useNodesState(project.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(project.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -634,6 +635,12 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   useEffect(()=>{
     setProjects(curr=> curr.map(p=> p.id===project.id ? ({...p, nodes, edges}) : p));
   }, [nodes, edges]);
+
+  // when switching to a different project, load its nodes/edges into local state
+  useEffect(() => {
+    setNodes(project.nodes);
+    setEdges(project.edges);
+  }, [project.id]);
 
   // Keyboard event handler to open modal (E, Space, Enter)
   useEffect(() => {
@@ -713,28 +720,34 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
       const desired = Math.max(160, Math.min(300, Math.round(120 * ratio)));
       setMiniMapWidth(desired);
       // debounce equal-fit so the viewport padding stays consistent on resize
-      if (resizeTimerRef.current) {
-        window.clearTimeout(resizeTimerRef.current);
+      const inst = rfInstRef.current;
+      const el = canvasRef.current;
+      if (!inst || !el) return;
+      const nlist = inst.getNodes().filter(n => !n.hidden && n.width && n.height);
+      if (nlist.length === 0) return;
+      const b = getNodesBounds(nlist as any);
+      const vw = el.clientWidth, vh = el.clientHeight;
+      const R = vw / vh;
+      let bx = b.x, by = b.y, bw = b.width, bh = b.height;
+      const r = bw / bh;
+      if (r < R) { // expand width to match aspect
+        const newW = bh * R; const dx = (newW - bw) / 2; bw = newW; bx -= dx;
+      } else if (r > R) { // expand height
+        const newH = bw / R; const dy = (newH - bh) / 2; bh = newH; by -= dy;
       }
-      resizeTimerRef.current = window.setTimeout(() => {
-        const inst = rfInstRef.current;
-        const el = canvasRef.current;
-        if (!inst || !el) return;
-        const nodes = inst.getNodes().filter(n => !n.hidden && n.width && n.height);
-        if (nodes.length === 0) return;
-        const b = getNodesBounds(nodes as any);
-        const vw = el.clientWidth, vh = el.clientHeight;
-        const R = vw / vh;
-        let bx = b.x, by = b.y, bw = b.width, bh = b.height;
-        const r = bw / bh;
-        if (r < R) { // expand width to match aspect
-          const newW = bh * R; const dx = (newW - bw) / 2; bw = newW; bx -= dx;
-        } else if (r > R) { // expand height
-          const newH = bw / R; const dy = (newH - bh) / 2; bh = newH; by -= dy;
-        }
-        const { x, y, zoom } = getViewportForBounds({ x: bx, y: by, width: bw, height: bh } as any, vw, vh, 0.1, 4, 0.04);
+      const { x, y, zoom } = getViewportForBounds({ x: bx, y: by, width: bw, height: bh } as any, vw, vh, 0.1, 4, 0.04);
+      if (!initialFitDoneRef.current) {
+        // Do an immediate fit on first render to avoid visible jump
         inst.setViewport({ x, y, zoom });
-      }, 60);
+        initialFitDoneRef.current = true;
+      } else {
+        if (resizeTimerRef.current) {
+          window.clearTimeout(resizeTimerRef.current);
+        }
+        resizeTimerRef.current = window.setTimeout(() => {
+          inst.setViewport({ x, y, zoom });
+        }, 60);
+      }
     };
     measure();
     const ro = new ResizeObserver(() => measure());
@@ -843,11 +856,11 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         nodesDraggable={!locked}
         nodesConnectable={!locked}
         elementsSelectable={!locked}
-        fitView
+        /* we'll handle fit via measure() to avoid jump */
         fitViewOptions={{ padding: 0.08 }}
         snapToGrid
         snapGrid={[16,16]}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        /* no default viewport; measure() sets the view */
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#000000" />
@@ -1513,11 +1526,11 @@ function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClo
 
         <div>
           <label className="text-xs text-zinc-600">Schedule (optional)</label>
-          <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="e.g. Mondays 9am, and also every time an alert is set." value={schedule} onChange={(e)=> setSchedule(e.target.value)} />
-          <div className="text-[11px] text-zinc-500 mt-1">Tip: Leave empty to only send on manual runs.</div>
+          <input className="mt-1 w-full border rounded-lg px-2 py-2" placeholder="e.g., &quot;Mondays 9 a.m. and also every time an alert is set.&quot;" value={schedule} onChange={(e)=> setSchedule(e.target.value)} />
+          <div className="text-xs text-zinc-600 mt-1.5">Note: Leave empty to only send on manual executions.</div>
         </div>
 
-        <div className="flex justify-end pt-4 border-t mt-4">
+        <div className="flex justify-end pt-0 mt-[-18px]">
           <button className="px-3 py-2 rounded-lg bg-[#5f4fa5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
