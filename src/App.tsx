@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import ReactFlow, {
   addEdge,
   MarkerType,
@@ -10,7 +10,8 @@ import { Background, BackgroundVariant } from "@reactflow/background";
 import { Controls } from "@reactflow/controls";
 import { MiniMap } from "@reactflow/minimap";
 import "reactflow/dist/style.css";
-import type { Edge, Node, Connection } from "reactflow";
+import type { Edge, Node, Connection, ReactFlowInstance } from "reactflow";
+import { getNodesBounds, getViewportForBounds } from "reactflow";
 
 /**
  * Datagent — One‑page React Frontend (Hackathon MVP)
@@ -263,10 +264,10 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
             {projects.length===0 ? (
               <EmptyRow text="No projects yet" />
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-1 mt-3">
                 {projects.map(p=> (
                   <div key={p.id} className={`group flex items-center rounded-lg px-2 py-1.5 ${p.id===activeProjectId?"bg-zinc-300":""} hover:bg-zinc-200`}>
-                    <button onClick={()=>setActiveProjectId(p.id)} className="flex-1 text-left">
+                    <button onClick={()=>setActiveProjectId(p.id)} className="flex-1 text-left min-w-0">
                       <div className="text-sm font-medium truncate">{p.name}</div>
                       <div className="text-[11px] text-zinc-500 truncate">{p.description}</div>
                     </button>
@@ -280,7 +281,7 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
 
           <Section title="Accounts" actionLabel="Add" onAction={()=>setShowAddAccount(true)}>
             {accounts.length===0 ? <EmptyRow text="No accounts yet"/> : (
-              <div className="space-y-1">
+              <div className="space-y-1 mt-3">
                 {accounts.map(a=> (
                   <div key={a.id} className="group px-2 py-1.5 rounded-lg flex items-center justify-between gap-2 hover:bg-zinc-200">
                     <button className="flex items-center gap-2 flex-1 text-left">
@@ -320,11 +321,10 @@ function Studio({ user, setUser }:{ user: User; setUser: React.Dispatch<React.Se
               </div>
             )}
             {activeProject ? (
-              <>
-                <div className="text-sm text-zinc-500">Project</div>
-                <div className="font-semibold">{activeProject.name}</div>
-                <div className="text-sm text-zinc-500 truncate max-w-[420px]">{activeProject.description}</div>
-              </>
+              <div className="flex flex-col">
+                <div className="font-semibold leading-tight">{activeProject.name}</div>
+                <div className="text-sm text-zinc-500 leading-tight truncate max-w-[420px]">{activeProject.description}</div>
+              </div>
             ) : (
               <div className="text-sm text-zinc-600">Create a project to begin</div>
             )}
@@ -443,7 +443,7 @@ function UserFooter({ user, onLogout, onUpdateUser }:{ user: User; onLogout: ()=
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={(e)=>{ e.stopPropagation(); setOpen(false); }} />
-          <div className="absolute right-3 bottom-12 w-64 bg-white border rounded-xl shadow-lg p-2 z-20">
+          <div className="fixed left-3 bottom-12 w-64 bg-white border rounded-xl shadow-lg p-2 z-20" style={{maxWidth: 'calc(100vw - 16px)'}}>
             <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-zinc-200" onClick={()=>{ setShowProfile(true); setOpen(false); }}>Profile</button>
             <div className="h-px bg-zinc-200 my-1" />
             <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-zinc-200 text-rose-600" onClick={onLogout}>Log out</button>
@@ -616,10 +616,15 @@ function CreateProjectModal({ onClose, onCreate }:{ onClose:()=>void; onCreate:(
 
 // --------------------------- Project Canvas ---------------------------
 function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects: React.Dispatch<React.SetStateAction<Project[]>> }){
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const rfInstRef = useRef<ReactFlowInstance | null>(null);
+  const resizeTimerRef = useRef<number | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(project.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(project.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
+  const miniMapHeight = 120;
+  const [miniMapWidth, setMiniMapWidth] = useState<number>(200);
 
   // keep outer project state in sync
   useEffect(()=>{
@@ -628,6 +633,46 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
 
   const onConnect = useCallback((conn: Edge | Connection) => {
     setEdges((eds) => addEdge({ ...conn, animated: true, markerEnd:{ type: MarkerType.ArrowClosed } }, eds));
+  }, []);
+
+  useEffect(() => {
+    const root = canvasRef.current;
+    if (!root) return;
+    const measure = () => {
+      const w = root.clientWidth;
+      const h = root.clientHeight || 1;
+      const ratio = w / h;
+      const desired = Math.max(160, Math.min(300, Math.round(120 * ratio)));
+      setMiniMapWidth(desired);
+      // debounce equal-fit so the viewport padding stays consistent on resize
+      if (resizeTimerRef.current) {
+        window.clearTimeout(resizeTimerRef.current);
+      }
+      resizeTimerRef.current = window.setTimeout(() => {
+        const inst = rfInstRef.current;
+        const el = canvasRef.current;
+        if (!inst || !el) return;
+        const nodes = inst.getNodes().filter(n => !n.hidden && n.width && n.height);
+        if (nodes.length === 0) return;
+        const b = getNodesBounds(nodes as any);
+        const vw = el.clientWidth, vh = el.clientHeight;
+        const R = vw / vh;
+        let bx = b.x, by = b.y, bw = b.width, bh = b.height;
+        const r = bw / bh;
+        if (r < R) { // expand width to match aspect
+          const newW = bh * R; const dx = (newW - bw) / 2; bw = newW; bx -= dx;
+        } else if (r > R) { // expand height
+          const newH = bw / R; const dy = (newH - bh) / 2; bh = newH; by -= dy;
+        }
+        const { x, y, zoom } = getViewportForBounds({ x: bx, y: by, width: bw, height: bh } as any, vw, vh, 0.1, 4, 0.04);
+        inst.setViewport({ x, y, zoom });
+      }, 60);
+    };
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(root);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
   // Palette (left overlay)
@@ -690,7 +735,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
   };
 
   return (
-    <div className="h-[calc(100%-56px)] relative">
+    <div ref={canvasRef} className="h-[calc(100%-56px)] relative">
       {/* Palette */}
       <div className="absolute z-10 left-4 top-4 bg-white/90 backdrop-blur rounded-2xl border shadow p-2">
         <div className="text-xs text-zinc-500 px-2 pb-1">Blocks</div>
@@ -711,6 +756,7 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         onConnect={onConnect}
         onNodeClick={(_, node)=> setSelectedNodeId(node.id)}
         onNodeDoubleClick={(_, node)=> openModalFor(node as Node<NodeData>)}
+        onInit={(inst) => { rfInstRef.current = inst; /* equal-fit happens in measure */ }}
         isValidConnection={(c)=> {
           const s = nodes.find(n=> n.id === c.source);
           const t = nodes.find(n=> n.id === c.target);
@@ -721,14 +767,45 @@ function ProjectCanvas({ project, setProjects }:{ project: Project; setProjects:
         nodesConnectable={!locked}
         elementsSelectable={!locked}
         fitView
+        fitViewOptions={{ padding: 0.08 }}
         snapToGrid
         snapGrid={[16,16]}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls position="bottom-left" />
-        <MiniMap pannable zoomable />
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-right"
+          style={{
+            width: miniMapWidth,
+            height: miniMapHeight,
+            right: 56,
+            bottom: 8,
+            backgroundColor: '#ffffff',
+            border: '1px solid #0a0a0a',
+            borderRadius: 0,
+            boxSizing: 'border-box',
+            display: 'block',
+            overflow: 'hidden',
+          }}
+        />
+        <Controls
+          position="bottom-right"
+          style={{
+            right: 8,
+            bottom: 8,
+            height: miniMapHeight,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            backgroundColor: '#ffffff',
+            border: '1px solid #0a0a0a',
+            borderRadius: 0,
+            padding: 4,
+          }}
+        />
       </ReactFlow>
 
       {/* Right inspector */}
@@ -1161,9 +1238,9 @@ function ExecBar({ project }:{ project: Project }){
 
   return (
     <div className="relative">
-      <button onClick={()=>setOpen(o=>!o)} className="px-3 py-1.5 rounded-xl border bg-white hover:bg-zinc-200 flex items-center gap-1">
+      <button onClick={()=>setOpen(o=>!o)} className="relative pl-3 pr-8 py-1.5 rounded-xl border bg-white hover:bg-zinc-200">
         <span>Execution</span>
-        <span className={`text-zinc-500 ${open?'-rotate-90':'rotate-90'}`}>⟨</span>
+        <span className={`pointer-events-none absolute right-[2px] top-1/2 -translate-y-1/2 text-zinc-500 ${open?'-rotate-90':'rotate-90'}`}>⟨</span>
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-[380px] bg-white border rounded-xl shadow-xl p-3 z-20">

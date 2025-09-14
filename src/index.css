@@ -1,2 +1,7 @@
 /* Tailwind CSS v4: prefer single import over per-layer directives */
 @import "tailwindcss";
+
+/* React Flow controls: remove divider under the last (lock) button */
+.react-flow__controls .react-flow__controls-button:last-of-type {
+  border-bottom: none !important;
+}
