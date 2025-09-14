@@ -6,6 +6,7 @@ from flask_cors import CORS
 import pandas as pd
 import altair as alt
 import openai
+from data_agent.dataset_orchestrator import DatasetOrchestrator
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -132,6 +133,84 @@ def generate_visualization():
     except Exception as e:
         logging.error("Unexpected error: %s", str(e))
         return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@app.route('/data-agent/orchestrate', methods=['POST'])
+def orchestrate_with_data_agent():
+    """Run the DatasetOrchestrator on a dataset using AI provider.
+
+    JSON body:
+    {
+      "dataset_path": "path/to/file.csv" | "https://...",  // required
+      "prompt": "clean missing values and create moving averages", // required
+      "provider": "tandem" | "openai" | "claude",           // optional, default tandem
+      "script_only": true|false                                // optional, default false
+    }
+    """
+    try:
+        body = request.get_json(force=True)
+        dataset_path = body.get('dataset_path')
+        prompt = body.get('prompt')
+        provider = (body.get('provider') or 'tandem').lower()
+        script_only = bool(body.get('script_only', False))
+
+        if not dataset_path or not prompt:
+            return jsonify({
+                'success': False,
+                'error': 'dataset_path and prompt are required'
+            }), 400
+
+        # If a URL is provided, let pandas read it directly via orchestrator
+        orch = DatasetOrchestrator(provider_name=provider, script_only_mode=script_only)
+
+        # Attempt to load dataset
+        loaded = False
+        if dataset_path.startswith('http://') or dataset_path.startswith('https://'):
+            try:
+                df = pd.read_csv(dataset_path)
+                # save to a temp csv for orchestrator
+                tmp_path = os.path.join('/tmp', 'data_agent_input.csv')
+                df.to_csv(tmp_path, index=False)
+                loaded = orch.load_dataset(tmp_path)
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'Failed to load dataset from URL: {e}'}), 400
+        else:
+            # Resolve relative path from backend directory
+            path = dataset_path
+            if not os.path.isabs(path):
+                path = os.path.abspath(path)
+            if not os.path.exists(path):
+                return jsonify({'success': False, 'error': f'Dataset not found: {path}'}), 400
+            loaded = orch.load_dataset(path)
+
+        if not loaded:
+            return jsonify({'success': False, 'error': 'Failed to load dataset'}), 400
+
+        # Orchestrate with retries handled internally
+        result = orch.orchestrate_transformation(prompt)
+
+        # Attach a tiny preview of resulting dataframe if available
+        preview = None
+        try:
+            if orch.data is not None:
+                preview = {
+                    'shape': list(orch.data.shape),
+                    'columns': orch.data.columns.tolist(),
+                    'head': orch.data.head(5).to_dict('records')
+                }
+        except Exception:
+            preview = None
+
+        return jsonify({
+            'success': 'error' not in result,
+            'provider': provider,
+            'script_only': script_only,
+            'result': result,
+            'preview': preview
+        })
+
+    except Exception as e:
+        logging.exception('Data Agent orchestration failed')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():

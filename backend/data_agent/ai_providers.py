@@ -145,7 +145,8 @@ class TandemProvider(AIProvider):
         load_dotenv()
         self.api_key = os.getenv('TANDEM_API_KEY')
         self.base_url = "https://api.tandemn.com/api/v1"
-        self.model = "Qwen/Qwen3-32B-AWQ"
+        # Use DeepSeek distilled Llama-70B model per user request
+        self.model = "casperhansen/deepseek-r1-distill-llama-70b-awq"
     
     def get_provider_name(self) -> str:
         return "Tandem (Qwen3-32B)"
@@ -159,22 +160,16 @@ class TandemProvider(AIProvider):
             "Content-Type": "application/json"
         }
         
+        # Match the exact API calling pattern requested
         payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a data analysis expert that provides structured analysis recommendations."
-                },
-                {
-                    "role": "user", 
-                    "content": prompt
-                }
+                {"role": "user", "content": prompt}
             ]
         }
         
         # Try with increasing timeouts and retries
-        timeouts = [30, 60, 90]  # Progressive timeout increases
+        timeouts = [120, 120, 120]  # Progressive timeout increases
         
         for attempt, timeout in enumerate(timeouts):
             try:
@@ -182,7 +177,7 @@ class TandemProvider(AIProvider):
                     print(f"🔄 Tandem API retry {attempt + 1}/{len(timeouts)} (timeout: {timeout}s)")
                 
                 response = requests.post(
-                    f"{self.base_url}/chat/completions",
+                    "https://api.tandemn.com/api/v1/chat/completions",
                     headers=headers,
                     json=payload,
                     timeout=timeout
