@@ -92,21 +92,29 @@ def generate_visualization():
             "- Always add a chart title that reflects the user's request.\n"
             "- Always add tooltip encoding to show relevant columns when hovering.\n"
             "- Always add appropriate axes labels and legends.\n"
-            "- Use only the columns that exist in the dataset.\n"
+            "- USE ONLY the columns that EXIST in the dataset.\n"
             f"User request: {user_input}\n"
             "Return only the Python code for the chart using Altair and the DataFrame variable 'df'."
         )
         
-        # Call OpenAI API
+        # Call OpenAI API with retry logic
         client = openai.OpenAI()
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "user", "content": prompt_template}
-            ]
-        )
+        new_code = None
         
-        new_code = response.choices[0].message.content
+        for attempt in range(5):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "user", "content": prompt_template}
+                    ]
+                )
+                new_code = response.choices[0].message.content
+                break
+            except Exception as e:
+                if attempt == 4:  # Last attempt
+                    return jsonify({'error': f'API failed after 5 attempts: {str(e)}'}), 500
+                continue
         
         # Execute the code safely with error handling
         error_msg = None
