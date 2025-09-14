@@ -1070,12 +1070,25 @@ function CanvasNode(props: NodeProps<NodeData>){
 // PreviewCard removed
 
 // --------------------------- Node Modals ---------------------------
-function InputNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function InputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
   const [kind, setKind] = useState<InputSourceKind>((d.input?.source.kind) || "csv");
-  const [_cfg, setCfg] = useState<InputConfig>(d.input?.source || { kind: "csv", delimiter: "," });
+  const [cfg, setCfg] = useState<InputConfig>(d.input?.source || { kind: "csv", delimiter: "," });
 
   const updateCfg = (patch: Partial<InputConfig>) => setCfg(prev => ({...prev, ...patch} as any));
+
+  const handleSave = () => {
+    const updatedData: NodeData = {
+      ...d,
+      input: {
+        source: cfg,
+        boundAccountId: d.input?.boundAccountId
+      },
+      status: "configured"
+    };
+    onSave(updatedData);
+    onClose();
+  };
 
   return (
     <Modal title="Configure Input" onClose={onClose}>
@@ -1174,14 +1187,27 @@ function InputNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData
           </div>
         )}
 
+        <div className="flex justify-end pt-4 border-t mt-4">
+          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
+        </div>
       </div>
     </Modal>
   )
 }
 
-function ProcessNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function ProcessNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
   const [transformation, setTransformation] = useState<string>(d.convo?.[0]?.content || "");
+
+  const handleSave = () => {
+    const updatedData: NodeData = {
+      ...d,
+      convo: transformation ? [{ role: "user", content: transformation }] : [],
+      status: "configured"
+    };
+    onSave(updatedData);
+    onClose();
+  };
 
   return (
     <Modal title="Configure Process" onClose={onClose}>
@@ -1194,6 +1220,9 @@ function ProcessNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeDa
             value={transformation}
             onChange={(e) => setTransformation(e.target.value)}
           />
+        </div>
+        <div className="flex justify-end pt-4 mt-4">
+          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
         </div>
       </div>
     </Modal>
@@ -1318,11 +1347,22 @@ function VisualizeNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<Node
   )
 }
 
-function OutputNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
+function OutputNodeModal({ node, onClose, onSave }:{ node: Node<NodeData>; onClose:()=>void; onSave:(d:NodeData)=>void }){
   const d = node.data;
   const [kind, setKind] = useState<Destination["kind"]>(d.destination?.kind ?? "email");
   const [config, setConfig] = useState<Record<string,any>>(d.destination?.config ?? {});
   const [schedule, setSchedule] = useState<string>(d.schedule ?? "");
+
+  const handleSave = () => {
+    const updatedData: NodeData = {
+      ...d,
+      destination: { kind, config },
+      schedule: schedule || null,
+      status: "configured"
+    };
+    onSave(updatedData);
+    onClose();
+  };
 
   return (
     <Modal title="Configure Output" onClose={onClose}>
@@ -1389,6 +1429,9 @@ function OutputNodeModal({ node, onClose, onSave: _onSave }:{ node: Node<NodeDat
           <div className="text-[11px] text-zinc-500 mt-1">Tip: Leave empty to only send on manual runs.</div>
         </div>
 
+        <div className="flex justify-end pt-4 border-t mt-4">
+          <button className="px-3 py-2 rounded-lg bg-[#6250A5] text-white hover:bg-[#544691]" onClick={handleSave}>Save</button>
+        </div>
       </div>
     </Modal>
   )
